@@ -1620,6 +1620,26 @@ public class EDIFNetlist extends EDIFName {
 			// Add copy to prim library to avoid destructive changes when collapsed
 			new EDIFCell(netlistPrims, toAdd);
 		}
+
+		Map<EDIFCellInst,EDIFPropertyValue> instToIostandard = new HashMap<>();
+		for (Entry<?,EDIFNet> e : getTopCell().getInternalNetMap().entrySet()) {
+			EDIFNet en = e.getValue();
+			EDIFPropertyValue iostandard = en.getProperty(IOSTANDARD_PROP);
+			if (iostandard == null) {
+				iostandard = en.getProperty(IOSTANDARD_PROP.toUpperCase());
+			}
+			if (iostandard == null) {
+				continue;
+			}
+			EDIFHierNet ehn = new EDIFHierNet(getTopHierCellInst(), en);
+			List<EDIFHierPortInst> portInsts = ehn.getLeafHierPortInsts(true);
+			if (portInsts.isEmpty())
+				continue;
+			if (portInsts.size() != 1)
+				throw new RuntimeException("Multiple EDIFHierPortInst-s found on net " + ehn.getHierarchicalNetName());
+			EDIFCellInst eci = portInsts.get(0).getPortInst().getCellInst();
+			instToIostandard.put(eci, iostandard);
+		}
 		
 		// Update all cell references to macro versions
 		for(EDIFLibrary lib : getLibraries()) {
@@ -1634,6 +1654,9 @@ public class EDIFNetlist extends EDIFName {
 						        EDIFPropertyValue value = inst.getProperty(IOSTANDARD_PROP);
 						        if(value == null) {
 						            value = inst.getProperty(IOSTANDARD_PROP.toUpperCase());
+						        }
+						        if(value == null) {
+						            value = instToIostandard.get(inst);
 						        }
 						        if(value == null) {
 						            // If the IOStandard is not set, use default
