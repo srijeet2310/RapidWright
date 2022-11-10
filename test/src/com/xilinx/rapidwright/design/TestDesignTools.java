@@ -39,6 +39,7 @@ import com.xilinx.rapidwright.device.BELPin;
 import com.xilinx.rapidwright.device.Device;
 import com.xilinx.rapidwright.device.PIP;
 import com.xilinx.rapidwright.edif.EDIFHierCellInst;
+import com.xilinx.rapidwright.edif.EDIFHierPortInst;
 import com.xilinx.rapidwright.edif.EDIFNetlist;
 import com.xilinx.rapidwright.edif.EDIFTools;
 import com.xilinx.rapidwright.support.RapidWrightDCP;
@@ -577,5 +578,32 @@ public class TestDesignTools {
         } else {
             Assertions.assertTrue(design.getVccNet().getPins().isEmpty());
         }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            // Cell pin placed onto a D6LUT/O6 -- its net does exit the site
+            "processor/address_loop[8].output_data.pc_vector_mux_lut/LUT6/O,D_O",
+            // Cell pin placed onto a D5LUT/O5 -- its net does exit the site
+            "processor/address_loop[8].output_data.pc_vector_mux_lut/LUT5/O,DMUX",
+
+            // Cell pin placed onto a E6LUT/O6 -- its net does not exit the site
+            // but can if it wishes to
+            "processor/stack_loop[4].upper_stack.stack_pointer_lut/LUT6/O,E_O",
+
+            // Cell pin placed onto a D5LUT/O5 -- its net does not exit the site
+            "processor/stack_loop[3].upper_stack.stack_pointer_lut/LUT5/O,null",
+            // Cell pin placed onto a E5LUT/O5 -- its net does not exit the site
+            "processor/stack_loop[4].upper_stack.stack_pointer_lut/LUT5/O,null",
+
+    })
+    void testGetRoutedSitePin(String hierPortInstName, String expected) {
+        Design d = RapidWrightDCP.loadDCP("picoblaze_ooc_X10Y235.dcp");
+        EDIFNetlist netlist = d.getNetlist();
+        EDIFHierPortInst ehpi = netlist.getHierPortInstFromName(hierPortInstName);
+        Cell cell = ehpi.getPhysicalCell(d);
+        Net net = d.getNet(ehpi.getHierarchicalNetName());
+        String sitePinName = DesignTools.getRoutedSitePin(cell, net, ehpi.getPortInst().getName());
+        Assertions.assertEquals(expected, sitePinName == null ? "null" : sitePinName);
     }
 }
