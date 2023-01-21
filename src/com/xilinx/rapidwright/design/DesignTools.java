@@ -1290,6 +1290,18 @@ public class DesignTools {
                     // but no inter-site routing (thus no SPI) associated
                     if (spi != null) {
                         handlePinRemovals(spi, deferRemovals);
+
+                        if (spi.isOutPin()) {
+                            SitePinInst altSpi = net.getAlternateSource();
+                            if (altSpi != null) {
+                                if (spi == altSpi) {
+                                    altSpi = net.getSource();
+                                    assert(spi != altSpi);
+                                }
+                                siteInst.unrouteIntraSiteNet(altSpi.getBELPin(), pin);
+                                handlePinRemovals(altSpi, deferRemovals);
+                            }
+                        }
                     }
                 }
             }
