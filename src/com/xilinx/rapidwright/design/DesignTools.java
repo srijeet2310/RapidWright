@@ -1218,17 +1218,7 @@ public class DesignTools {
         return toRemove;
     }
 
-
-    /**
-     * This method will completely remove a placed cell (both logical and physical) from a design.
-     * In the case where the removed cell is the last user of a shared control signal (CLK, CE, SR) then that pin will also be removed and unrouted immediately if deferRemovals is null, otherwise it is added to this map.
-     * @param design The design where the cell is instantiated
-     * @param cell The cell to remove
-     * @param deferRemovals An optional map that, if passed in non-null will be populated with
-     * site pins marked for removal.  The map allows a persistent tracking if this method is called
-     * many times as the process is expensive without batching.
-     */
-    public static void fullyRemoveCell(Design design, Cell cell, Map<Net, Set<SitePinInst>> deferRemovals) {
+    private static void fullyUnplaceCellHelper(Cell cell, Map<Net, Set<SitePinInst>> deferRemovals) {
         SiteInst siteInst = cell.getSiteInst();
         BEL bel = cell.getBEL();
         // If cell was using shared control signals (CLK, CE, RST), check to see if this was
@@ -1292,19 +1282,18 @@ public class DesignTools {
             if (otherUser == false) {
                 // Unroute site routing back to pin and remove site pin
                 String sitePinName = getRoutedSitePinFromPhysicalPin(cell, net, pin.getName());
-                BELPin srcPin = siteInst.getSite().getBELPin(sitePinName);
-                siteInst.unrouteIntraSiteNet(srcPin, pin);
-                SitePinInst spi = siteInst.getSitePinInst(sitePinName);
-                // It's possible site wire could be set (e.g. reserved using GLOBAL_USEDNET)
-                // but no inter-site routing (thus no SPI) associated
-                if (spi != null) {
-                    handlePinRemovals(spi, deferRemovals);
+                if (sitePinName != null) {
+                    BELPin srcPin = siteInst.getSite().getBELPin(sitePinName);
+                    siteInst.unrouteIntraSiteNet(srcPin, pin);
+                    SitePinInst spi = siteInst.getSitePinInst(sitePinName);
+                    // It's possible site wire could be set (e.g. reserved using GLOBAL_USEDNET)
+                    // but no inter-site routing (thus no SPI) associated
+                    if (spi != null) {
+                        handlePinRemovals(spi, deferRemovals);
+                    }
                 }
             }
         }
-
-        // Remove Physical Cell
-        design.removeCell(cell);
 
         // Check and remove routethrus that exist that point to removed cell
         List<BEL> belsToRemove = null;
@@ -1319,6 +1308,27 @@ public class DesignTools {
                 siteInst.removeCell(b);
             }
         }
+    }
+
+    public static void fullyUnplaceCell(Cell cell, Map<Net, Set<SitePinInst>> deferRemovals) {
+        fullyUnplaceCellHelper(cell, deferRemovals);
+        cell.unplace();
+    }
+
+    /**
+     * This method will completely remove a placed cell (both logical and physical) from a design.
+     * In the case where the removed cell is the last user of a shared control signal (CLK, CE, SR) then that pin will also be removed and unrouted immediately if deferRemovals is null, otherwise it is added to this map.
+     * @param design The design where the cell is instantiated
+     * @param cell The cell to remove
+     * @param deferRemovals An optional map that, if passed in non-null will be populated with
+     * site pins marked for removal.  The map allows a persistent tracking if this method is called
+     * many times as the process is expensive without batching.
+     */
+    public static void fullyRemoveCell(Design design, Cell cell, Map<Net, Set<SitePinInst>> deferRemovals) {
+        fullyUnplaceCellHelper(cell, deferRemovals);
+
+        // Remove Physical Cell
+        design.removeCell(cell);
 
         // Remove Logical Cell
         for (EDIFPortInst portInst : cell.getEDIFCellInst().getPortInsts()) {
