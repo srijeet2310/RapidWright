@@ -24,6 +24,8 @@
 
 package com.xilinx.rapidwright.router;
 
+import com.xilinx.rapidwright.design.Design;
+import com.xilinx.rapidwright.design.DesignTools;
 import com.xilinx.rapidwright.design.Net;
 import com.xilinx.rapidwright.design.SitePinInst;
 import com.xilinx.rapidwright.device.ClockRegion;
@@ -34,6 +36,7 @@ import com.xilinx.rapidwright.device.SitePin;
 import com.xilinx.rapidwright.device.SiteTypeEnum;
 import com.xilinx.rapidwright.device.Tile;
 import com.xilinx.rapidwright.device.Wire;
+import com.xilinx.rapidwright.rwroute.GlobalSignalRouting;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -401,6 +404,7 @@ public class UltraScaleClockRouting {
                     }
                     RouteNode rn = new RouteNode(w.getTile(), w.getWireIndex(), curr, curr.getLevel()+1);
                     if (visited.contains(rn)) continue;
+                    if (rn.getWireName().endsWith("_CLK_CASC_OUT")) continue;
                     rn.setCost(rn.getManhattanDistance(lcb));
                     q.add(rn);
                 }
@@ -479,4 +483,46 @@ public class UltraScaleClockRouting {
         return distLines;
     }
 
+    /**
+     * Routes a partially routed clock that already has its horizontal distribution lines routed.
+     * It will examine the clock net for SitePinInsts and assumes any present are already routed. It
+     * then invokes {@link DesignTools#createMissingSitePinInsts(Design, Net)} to discover those not
+     * yet routed.
+     * @param design  The current design
+     * @param clkNet The partially routed clock net to make fully routed
+     */
+    public static void incrementalClockRouter(Design design, Net clkNet) {
+        // Assume all existing site pins are already routed
+        for (SitePinInst pin : clkNet.getSinkPins()) {
+            pin.setRouted(true);
+        }
+        // Find any missing site pins, to be used as target, routable sinks
+        DesignTools.createMissingSitePinInsts(design, clkNet);
+
+        // Find all horizontal distribution lines to be used as starting points and create a map
+        // lookup by clock region
+        Map<ClockRegion,Set<RouteNode>> startingPoints = new HashMap<>();
+        for (PIP p : clkNet.getPIPs()) {
+            for (Node node : new Node[] {p.getStartNode(), p.getEndNode()}) {
+                if (node == null) continue;
+                if (node.getIntentCode() != IntentCode.NODE_GLOBAL_HDISTR) continue;
+                for (Wire w : node.getAllWiresInNode()) {
+                    RouteNode rn = new RouteNode(w.getTile(), w.getWireIndex());
+                    Set<RouteNode> crNodes = startingPoints.computeIfAbsent(w.getTile().getClockRegion(), n -> new HashSet<>());
+                    crNodes.add(rn);
+                }
+            }
+        }
+
+        // Find the target leaf clock buffers (LCBs), route from horizontal dist lines to those
+        Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = GlobalSignalRouting.getLCBPinMappings(clkNet);
+        UltraScaleClockRouting.routeToLCBs(clkNet, startingPoints, lcbMappings.keySet());
+        // Last mile routing from LCBs to SLICEs
+        UltraScaleClockRouting.routeLCBsToSinks(clkNet, lcbMappings);
+
+        // Remove duplicates
+        Set<PIP> uniquePIPs = new HashSet<>();
+        uniquePIPs.addAll(clkNet.getPIPs());
+        clkNet.setPIPs(uniquePIPs);
+    }
 }
