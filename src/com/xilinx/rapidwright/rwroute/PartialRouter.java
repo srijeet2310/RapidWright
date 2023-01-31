@@ -29,6 +29,7 @@ import com.xilinx.rapidwright.design.Net;
 import com.xilinx.rapidwright.design.SitePinInst;
 import com.xilinx.rapidwright.device.Node;
 import com.xilinx.rapidwright.device.PIP;
+import com.xilinx.rapidwright.router.UltraScaleClockRouting;
 import com.xilinx.rapidwright.timing.ClkRouteTiming;
 import com.xilinx.rapidwright.timing.TimingManager;
 import com.xilinx.rapidwright.timing.delayestimator.DelayEstimatorBase;
@@ -267,22 +268,42 @@ public class PartialRouter extends RWRoute{
 
     @Override
     protected void addGlobalClkRoutingTargets(Net clk) {
-        if (!clk.hasPIPs()) {
-            super.addGlobalClkRoutingTargets(clk);
-        } else {
+        List<SitePinInst> clkPins = netToPins.get(clk);
+        if (clkPins == null || clkPins.isEmpty()) {
+            if (clk.hasPIPs()) {
+                preserveNet(clk, true);
+                numPreservedStaticNets++;
+                numPreservedRoutableNets++;
+            } else {
+                numNotNeedingRoutingNets++;
+            }
+            return;
+        }
+
+        clkNets.add(clk);
+    }
+
+    @Override
+    protected void routeGlobalClkNets() {
+        if (clkNets.size() > 0) System.out.println("INFO: Route clock nets");
+
+        for (Net clk : clkNets) {
+            List<SitePinInst> clkPins = netToPins.get(clk);
+            UltraScaleClockRouting.incrementalClockRouter(clk, clkPins,(node) -> {
+                        // A RouteNode will only be created if the net is necessary for
+                        // a to-be-routed connection
+                        return routingGraph.getNode(node) != null;
+                    });
             preserveNet(clk, false);
-            numPreservedClks++;
-            numPreservedRoutableNets++;
         }
     }
 
     @Override
     protected void addStaticNetRoutingTargets(Net staticNet) {
-        preserveNet(staticNet, false);
-
         List<SitePinInst> staticPins = netToPins.get(staticNet);
         if (staticPins == null || staticPins.isEmpty()) {
             if (staticNet.hasPIPs()) {
+                preserveNet(staticNet, true);
                 numPreservedStaticNets++;
                 numPreservedRoutableNets++;
             } else {

@@ -342,19 +342,19 @@ public class RWRoute{
      * TODO: fix the potential issue.
      */
     protected void routeGlobalClkNets() {
-         if (clkNets.size() > 0) System.out.println("INFO: Route clock nets");
-         for (Net clk : clkNets) {
-             if (routesToSinkINTTiles != null) {
-                 // routes clock nets with references of partial routes
+        if (clkNets.size() > 0) System.out.println("INFO: Route clock nets");
+        for (Net clk : clkNets) {
+            if (routesToSinkINTTiles != null) {
+                // routes clock nets with references of partial routes
                 System.out.println("INFO: Route with clock route and timing data");
                 GlobalSignalRouting.routeClkWithPartialRoutes(clk, routesToSinkINTTiles, design.getDevice());
-             } else {
-                 // routes clock nets from scratch
+            } else {
+                // routes clock nets from scratch
                 System.out.println("INFO: Route with symmetric non-timing-driven clock router");
-                 GlobalSignalRouting.symmetricClkRouting(clk, design.getDevice());
-             }
-             preserveNet(clk, false);
-         }
+                GlobalSignalRouting.symmetricClkRouting(clk, design.getDevice());
+            }
+            preserveNet(clk, false);
+        }
     }
 
     /**
@@ -371,7 +371,7 @@ public class RWRoute{
      * @param staticNet The static net in question, i.e. VCC or GND.
      */
     protected void addStaticNetRoutingTargets(Net staticNet) {
-        preserveNet(staticNet, false);
+        assert(!staticNet.hasPIPs());
 
         List<SitePinInst> sinks = staticNet.getSinkPins();
         if (sinks.size() > 0) {

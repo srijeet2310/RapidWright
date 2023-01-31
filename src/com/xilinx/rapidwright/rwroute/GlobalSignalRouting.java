@@ -239,19 +239,30 @@ public class GlobalSignalRouting {
      * @return A map between leaf clock buffer nodes and sink SitePinInsts.
      */
     public static Map<RouteNode, ArrayList<SitePinInst>> getLCBPinMappings(Net clk) {
+        return getLCBPinMappings(clk.getPins(), (n) -> false);
+    }
+
+    /**
+     * Maps each sink SitePinInsts of a clock net to a leaf clock buffer node.
+     * @param clkPins List of clock pins in question.
+     * @return A map between leaf clock buffer nodes and sink SitePinInsts.
+     */
+    public static Map<RouteNode, ArrayList<SitePinInst>> getLCBPinMappings(List<SitePinInst> clkPins,
+                                                                           Predicate<Node> isNodeUnavailable) {
         Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = new HashMap<>();
-        for (SitePinInst p : clk.getPins()) {
+        for (SitePinInst p : clkPins) {
             if (p.isOutPin()) continue;
-            if (p.isRouted()) continue;
             Node n = null;// n should be a node whose name ends with "CLK_LEAF"
-            for (Node prev : p.getConnectedNode().getAllUphillNodes()) {
-                if (prev.getTile().equals(p.getSite().getIntTile())) {
-                    for (Node prevPrev : prev.getAllUphillNodes()) {
-                        if (prevPrev.getIntentCode() == IntentCode.NODE_GLOBAL_LEAF) {
-                            n = prevPrev;
-                            break;
-                        }
+            outer: for (Node prev : p.getConnectedNode().getAllUphillNodes()) {
+                if (!prev.getTile().equals(p.getSite().getIntTile()) || isNodeUnavailable.test(prev)) {
+                    continue;
+                }
+                for (Node prevPrev : prev.getAllUphillNodes()) {
+                    if (prevPrev.getIntentCode() != IntentCode.NODE_GLOBAL_LEAF || isNodeUnavailable.test(prevPrev)) {
+                        continue;
                     }
+                    n = prevPrev;
+                    break outer;
                 }
             }
 

@@ -49,6 +49,7 @@ import java.util.Map.Entry;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * A collection of utility methods for routing clocks on
@@ -491,14 +492,27 @@ public class UltraScaleClockRouting {
      * @param design  The current design
      * @param clkNet The partially routed clock net to make fully routed
      */
-    public static void incrementalClockRouter(Design design, Net clkNet) {
+    public static void incrementalClockRouter(Design design,
+                                              Net clkNet,
+                                              Predicate<Node> isNodeUnavailable) {
         // Assume all existing site pins are already routed
-        for (SitePinInst pin : clkNet.getSinkPins()) {
-            pin.setRouted(true);
-        }
+        Set<SitePinInst> existingPins = new HashSet<>(clkNet.getSinkPins());
+
         // Find any missing site pins, to be used as target, routable sinks
         DesignTools.createMissingSitePinInsts(design, clkNet);
 
+        List<SitePinInst> createdPins = new ArrayList<>(clkNet.getSinkPins());
+        createdPins.removeAll(existingPins);
+
+        if (createdPins.isEmpty())
+            return;
+
+        incrementalClockRouter(clkNet, createdPins, isNodeUnavailable);
+    }
+
+    public static void incrementalClockRouter(Net clkNet,
+                                              List<SitePinInst> clkPins,
+                                              Predicate<Node> isNodeUnavailable) {
         // Find all horizontal distribution lines to be used as starting points and create a map
         // lookup by clock region
         Map<ClockRegion,Set<RouteNode>> startingPoints = new HashMap<>();
@@ -515,7 +529,7 @@ public class UltraScaleClockRouting {
         }
 
         // Find the target leaf clock buffers (LCBs), route from horizontal dist lines to those
-        Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = GlobalSignalRouting.getLCBPinMappings(clkNet);
+        Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = GlobalSignalRouting.getLCBPinMappings(clkPins, isNodeUnavailable);
         UltraScaleClockRouting.routeToLCBs(clkNet, startingPoints, lcbMappings.keySet());
         // Last mile routing from LCBs to SLICEs
         UltraScaleClockRouting.routeLCBsToSinks(clkNet, lcbMappings);
