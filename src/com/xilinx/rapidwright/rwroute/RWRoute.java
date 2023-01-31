@@ -394,7 +394,7 @@ public class RWRoute{
 
         for (List<SitePinInst> netRouteTargetPins : staticNetAndRoutingTargets.values()) {
             for (SitePinInst sink : netRouteTargetPins) {
-                routingGraph.unpreserve(sink.getConnectedNode());
+                assert(!routingGraph.isPreserved(sink.getConnectedNode()));
             }
         }
 

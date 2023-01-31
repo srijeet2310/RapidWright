@@ -197,8 +197,8 @@ public class PartialRouter extends RWRoute{
         preserveNet(vcc, false);
 
         // Copy existing PIPs
-        List<PIP> gndPips = (staticNetAndRoutingTargets.containsKey(gnd)) ? new ArrayList<>(gnd.getPIPs()) : Collections.emptyList();
-        List<PIP> vccPips = (staticNetAndRoutingTargets.containsKey(vcc)) ? new ArrayList<>(vcc.getPIPs()) : Collections.emptyList();
+        Set<PIP> gndPips = (staticNetAndRoutingTargets.containsKey(gnd)) ? new HashSet<>(gnd.getPIPs()) : Collections.emptySet();
+        Set<PIP> vccPips = (staticNetAndRoutingTargets.containsKey(vcc)) ? new HashSet<>(vcc.getPIPs()) : Collections.emptySet();
 
         for (List<SitePinInst> netRouteTargetPins : staticNetAndRoutingTargets.values()) {
             for (SitePinInst sink : netRouteTargetPins) {
@@ -211,8 +211,14 @@ public class PartialRouter extends RWRoute{
 
         // Since super.routeStaticNets() clobbers the PIPs list,
         // re-insert those existing PIPs
-        gnd.getPIPs().addAll(gndPips);
-        vcc.getPIPs().addAll(vccPips);
+        if (!gndPips.isEmpty() && gnd.hasPIPs()) {
+            gndPips.addAll(gnd.getPIPs());
+            gnd.setPIPs(gndPips);
+        }
+        if (!vccPips.isEmpty() && vcc.hasPIPs()) {
+            vccPips.addAll(vcc.getPIPs());
+            vcc.setPIPs(vccPips);
+        }
     }
 
     @Override
