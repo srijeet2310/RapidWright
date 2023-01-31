@@ -39,6 +39,7 @@ import com.xilinx.rapidwright.device.Wire;
 import com.xilinx.rapidwright.rwroute.GlobalSignalRouting;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -379,7 +380,7 @@ public class UltraScaleClockRouting {
             q.clear();
             visited.clear();
             ClockRegion currCR = lcb.getTile().getClockRegion();
-            q.addAll(startingPoints.get(currCR));
+            q.addAll(startingPoints.getOrDefault(currCR, Collections.emptySet()));
             while (!q.isEmpty()) {
                 RouteNode curr = q.poll();
                 visited.add(curr);
