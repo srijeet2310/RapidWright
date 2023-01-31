@@ -289,11 +289,7 @@ public class PartialRouter extends RWRoute{
 
         for (Net clk : clkNets) {
             List<SitePinInst> clkPins = netToPins.get(clk);
-            UltraScaleClockRouting.incrementalClockRouter(clk, clkPins,(node) -> {
-                        // A RouteNode will only be created if the net is necessary for
-                        // a to-be-routed connection
-                        return routingGraph.getNode(node) != null;
-                    });
+            UltraScaleClockRouting.incrementalClockRouter(clk, clkPins, routingGraph::isPreserved);
             preserveNet(clk, false);
         }
     }
