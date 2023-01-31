@@ -193,9 +193,18 @@ public class PartialRouter extends RWRoute{
         Net gnd = design.getGndNet();
         Net vcc = design.getVccNet();
 
+        preserveNet(gnd, false);
+        preserveNet(vcc, false);
+
         // Copy existing PIPs
         List<PIP> gndPips = (staticNetAndRoutingTargets.containsKey(gnd)) ? new ArrayList<>(gnd.getPIPs()) : Collections.emptyList();
         List<PIP> vccPips = (staticNetAndRoutingTargets.containsKey(vcc)) ? new ArrayList<>(vcc.getPIPs()) : Collections.emptyList();
+
+        for (List<SitePinInst> netRouteTargetPins : staticNetAndRoutingTargets.values()) {
+            for (SitePinInst sink : netRouteTargetPins) {
+                routingGraph.unpreserve(sink.getConnectedNode());
+            }
+        }
 
         // Perform static net routing (which does no rip-up)
         super.routeStaticNets();
@@ -289,7 +298,12 @@ public class PartialRouter extends RWRoute{
 
         for (Net clk : clkNets) {
             List<SitePinInst> clkPins = netToPins.get(clk);
-            UltraScaleClockRouting.incrementalClockRouter(clk, clkPins, routingGraph::isPreserved);
+            UltraScaleClockRouting.incrementalClockRouter(clk, clkPins,
+                    // Predicate to determine whether a node is unavailable for global routing
+                    (node) -> {
+                        Net preservedNet = routingGraph.getPreservedNet(node);
+                        return preservedNet != null && preservedNet != clk;
+                    });
             preserveNet(clk, false);
         }
     }
