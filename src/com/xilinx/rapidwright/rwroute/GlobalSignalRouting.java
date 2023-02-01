@@ -301,12 +301,12 @@ public class GlobalSignalRouting {
     /**
      * Routes a static net (GND or VCC).
      * @param currNet The current static net to be routed.
-     * @param isNodeUnavailable A Predicate lambda to check if node is unavailable for use.
+     * @param getNodeState Lambda to get a node's status (available, unavailable, already in-use).
      * @param design The {@link Design} instance to use.
      * @param routeThruHelper The {@link RouteThruHelper} instance to use.
      */
     public static void routeStaticNet(Net currNet,
-                                      Function<Node,NodeStatus> isNodeUnavailable,
+                                      Function<Node,NodeStatus> getNodeState,
                                       Design design, RouteThruHelper routeThruHelper) {
         NetType netType = currNet.getType();
         Set<PIP> netPIPs = new HashSet<>();
@@ -368,7 +368,7 @@ public class GlobalSignalRouting {
                 for (Node uphillNode : routingNode.getNode().getAllUphillNodes()) {
                     if (routeThruHelper.isRouteThru(uphillNode, routingNode.getNode())) continue;
                     LightweightRouteNode nParent = RouterHelper.createRoutingNode(uphillNode, createdRoutingNodes);
-                    if (!pruneNode(nParent, isNodeUnavailable, visitedRoutingNodes, usedRoutingNodes)) {
+                    if (!pruneNode(nParent, getNodeState, visitedRoutingNodes, usedRoutingNodes)) {
                         nParent.setPrev(routingNode);
                         q.add(nParent);
                     }

@@ -413,7 +413,8 @@ public class RWRoute{
             List<SitePinInst> pins = e.getValue();
             System.out.println("INFO: Route " + pins.size() + " pins of " + net);
             GlobalSignalRouting.routeStaticNet(net,
-                    // Predicate to determine whether a node is unavailable for global routing
+                    // Lambda to determine whether a node is (a) available for use,
+                    // (b) already in used for this static net, (c) unavailable
                     (node) -> {
                         Net preservedNet = routingGraph.getPreservedNet(node);
                         if (preservedNet != null) {
