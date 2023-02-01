@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 import com.xilinx.rapidwright.design.Design;
@@ -291,6 +292,12 @@ public class GlobalSignalRouting {
         return device.getClockRegion(center.y, center.x);
     }
 
+    public enum NodeStatus {
+        AVAILABLE,
+        UNAVAILABLE,
+        INUSE
+    }
+
     /**
      * Routes a static net (GND or VCC).
      * @param currNet The current static net to be routed.
@@ -299,7 +306,7 @@ public class GlobalSignalRouting {
      * @param routeThruHelper The {@link RouteThruHelper} instance to use.
      */
     public static void routeStaticNet(Net currNet,
-                                      Predicate<Node> isNodeUnavailable,
+                                      Function<Node,NodeStatus> isNodeUnavailable,
                                       Design design, RouteThruHelper routeThruHelper) {
         NetType netType = currNet.getType();
         Set<PIP> netPIPs = new HashSet<>();
@@ -361,7 +368,7 @@ public class GlobalSignalRouting {
                 for (Node uphillNode : routingNode.getNode().getAllUphillNodes()) {
                     if (routeThruHelper.isRouteThru(uphillNode, routingNode.getNode())) continue;
                     LightweightRouteNode nParent = RouterHelper.createRoutingNode(uphillNode, createdRoutingNodes);
-                    if (!pruneNode(nParent, isNodeUnavailable, visitedRoutingNodes)) {
+                    if (!pruneNode(nParent, isNodeUnavailable, visitedRoutingNodes, usedRoutingNodes)) {
                         nParent.setPrev(routingNode);
                         q.add(nParent);
                     }
@@ -389,8 +396,9 @@ public class GlobalSignalRouting {
      * @return true, if the RoutingNode instance should not be considered as an available resource.
      */
     private static boolean pruneNode(LightweightRouteNode routingNode,
-                                     Predicate<Node> isNodeUnavailable,
-                                     Set<LightweightRouteNode> visitedRoutingNodes) {
+                                     Function<Node,NodeStatus> isNodeUnavailable,
+                                     Set<LightweightRouteNode> visitedRoutingNodes,
+                                     Set<LightweightRouteNode> usedRoutingNodes) {
         Node node = routingNode.getNode();
         IntentCode ic = node.getTile().getWireIntentCode(node.getWire());
         switch(ic) {
@@ -405,10 +413,17 @@ public class GlobalSignalRouting {
                 return true;
             default:
         }
-        if (isNodeUnavailable.test(node)) return true;
+        NodeStatus status = isNodeUnavailable.apply(node);
+        if (status == NodeStatus.UNAVAILABLE) {
+            return true;
+        }
+        if (status == NodeStatus.INUSE) {
+            assert(!visitedRoutingNodes.contains(routingNode));
+            usedRoutingNodes.add(routingNode);
+            return false;
+        }
         return visitedRoutingNodes.contains(routingNode);
     }
-
     /**
      * Determines if the given {@link LightweightRouteNode} instance that represents a {@link Node} instance can serve as our sink.
      * @param routingNode The {@link LightweightRouteNode} instance in question.

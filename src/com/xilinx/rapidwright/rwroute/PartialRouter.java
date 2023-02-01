@@ -193,18 +193,9 @@ public class PartialRouter extends RWRoute{
         Net gnd = design.getGndNet();
         Net vcc = design.getVccNet();
 
-        preserveNet(gnd, false);
-        preserveNet(vcc, false);
-
         // Copy existing PIPs
         Set<PIP> gndPips = (staticNetAndRoutingTargets.containsKey(gnd)) ? new HashSet<>(gnd.getPIPs()) : Collections.emptySet();
         Set<PIP> vccPips = (staticNetAndRoutingTargets.containsKey(vcc)) ? new HashSet<>(vcc.getPIPs()) : Collections.emptySet();
-
-        for (List<SitePinInst> netRouteTargetPins : staticNetAndRoutingTargets.values()) {
-            for (SitePinInst sink : netRouteTargetPins) {
-                routingGraph.unpreserve(sink.getConnectedNode());
-            }
-        }
 
         // Perform static net routing (which does no rip-up)
         super.routeStaticNets();
@@ -316,6 +307,10 @@ public class PartialRouter extends RWRoute{
 
     @Override
     protected void addStaticNetRoutingTargets(Net staticNet) {
+        if (staticNet.hasPIPs()) {
+            preserveNet(staticNet, true);
+        }
+
         List<SitePinInst> staticPins = netToPins.get(staticNet);
         if (staticPins == null || staticPins.isEmpty()) {
             if (staticNet.hasPIPs()) {
