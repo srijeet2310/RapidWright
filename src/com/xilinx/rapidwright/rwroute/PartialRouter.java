@@ -299,7 +299,7 @@ public class PartialRouter extends RWRoute{
                     // Predicate to determine whether a node is unavailable for global routing
                     (node) -> {
                         Net preservedNet = routingGraph.getPreservedNet(node);
-                        return preservedNet != null && preservedNet != clk;
+                        return preservedNet != null /*&& preservedNet != clk*/;
                     });
             preserveNet(clk, false);
         }
