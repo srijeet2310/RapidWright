@@ -459,6 +459,14 @@ public class UltraScaleClockRouting {
         }
     }
 
+    public static List<RouteNode> routeToHorizontalDistributionLines(Net clk,
+                                                                     RouteNode vroute,
+                                                                     Collection<ClockRegion> clockRegions,
+                                                                     boolean down)
+    {
+        return routeToHorizontalDistributionLines(clk, vroute, clockRegions, down, (node) -> false);
+    }
+
     /**
      * Routes from a GLOBAL_VERTICAL_ROUTE to horizontal distribution lines.
      * @param clk The clock net to be routed.
@@ -467,7 +475,11 @@ public class UltraScaleClockRouting {
      * @param down To indicate if is is routing to the group of top clock regions.
      * @return A list of RouteNodes indicating the reached horizontal distribution lines.
      */
-    public static List<RouteNode> routeToHorizontalDistributionLines(Net clk, RouteNode vroute, Collection<ClockRegion> clockRegions, boolean down) {
+    public static List<RouteNode> routeToHorizontalDistributionLines(Net clk,
+                                                                     RouteNode vroute,
+                                                                     Collection<ClockRegion> clockRegions,
+                                                                     boolean down,
+                                                                     Predicate<Node> isNodeUnavailable) {
         boolean verbose = false;
         RouteNode centroidDistNode = UltraScaleClockRouting.transitionCentroidToVerticalDistributionLine(clk, vroute, down);
         if (verbose) System.out.println(" transition distribution node is \n \t = " + centroidDistNode);
@@ -519,10 +531,12 @@ public class UltraScaleClockRouting {
         // Find all horizontal distribution lines to be used as starting points and create a map
         // lookup by clock region
         Map<ClockRegion,Set<RouteNode>> startingPoints = new HashMap<>();
-        RouteNode maxVdist = null;
-        RouteNode minVdist = null;
+        RouteNode vrouteDown = null;
+        Set<Node> vroutes = new HashSet<>();
         for (PIP p : clkNet.getPIPs()) {
-            for (Node node : new Node[] {p.getStartNode(), p.getEndNode()}) {
+            Node startNode = p.getStartNode();
+            Node endNode = p.getEndNode();
+            for (Node node : new Node[] {startNode, endNode}) {
                 if (node == null) continue;
                 IntentCode ic = node.getIntentCode();
                 if (ic == IntentCode.NODE_GLOBAL_HDISTR) {
@@ -531,16 +545,34 @@ public class UltraScaleClockRouting {
                         Set<RouteNode> crNodes = startingPoints.computeIfAbsent(w.getTile().getClockRegion(), n -> new HashSet<>());
                         crNodes.add(rn);
                     }
-                } else if (ic == IntentCode.NODE_GLOBAL_VDISTR && node.equals(p.getStartNode()) &&
-                        p.getEndNode().getIntentCode() == IntentCode.NODE_GLOBAL_HDISTR) {
-                    if (maxVdist == null || node.getTile().getTileYCoordinate() > maxVdist.getTile().getTileYCoordinate()) {
-                        maxVdist = new RouteNode(node.getTile(), node.getWire());
-                    }
-                    if (minVdist == null || node.getTile().getTileYCoordinate() > minVdist.getTile().getTileYCoordinate()) {
-                        minVdist = new RouteNode(node.getTile(), node.getWire());
-                    }
+                } else if (ic == IntentCode.NODE_GLOBAL_VDISTR) {
+                    vroutes.add(node);
+                } else if (node == startNode &&
+                        endNode.getIntentCode() == IntentCode.NODE_GLOBAL_VDISTR &&
+                        (ic == IntentCode.NODE_GLOBAL_VROUTE || ic == IntentCode.NODE_GLOBAL_HROUTE)) {
+                    assert(vrouteDown == null);
+                    vrouteDown = new RouteNode(endNode.getTile(), endNode.getWire());
                 }
             }
+        }
+
+        final int centroidY = vrouteDown.getTile().getTileYCoordinate();
+        Node vrouteUpNode = null;
+        int vrouteUpDeltaY = Integer.MAX_VALUE;
+        for (Node node : vroutes) {
+            int y = node.getTile().getTileYCoordinate();
+            int deltaY = y - centroidY;
+            if (deltaY <= 0) {
+                continue;
+            }
+            if (vrouteUpNode == null || deltaY < vrouteUpDeltaY) {
+                vrouteUpNode = node;
+                vrouteUpDeltaY = deltaY;
+            }
+        }
+        RouteNode vrouteUp = null;
+        if (vrouteUpNode != null) {
+            vrouteUp = new RouteNode(vrouteUpNode.getTile(), vrouteUpNode.getWire());
         }
 
         // Find the target leaf clock buffers (LCBs), route from horizontal dist lines to those
@@ -548,24 +580,25 @@ public class UltraScaleClockRouting {
 
         Set<ClockRegion> newUpClockRegions = new HashSet<>();
         Set<ClockRegion> newDownClockRegions = new HashSet<>();
-        final int maxVdistTileY = maxVdist.getTile().getTileYCoordinate();
-        final int minVdistTileY = minVdist.getTile().getTileYCoordinate();
         for (Iterator<Map.Entry<RouteNode, ArrayList<SitePinInst>>> it = lcbMappings.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<RouteNode, ArrayList<SitePinInst>> e = it.next();
             RouteNode lcb = e.getKey();
             ClockRegion currCR = lcb.getTile().getClockRegion();
             startingPoints.computeIfAbsent(currCR, n -> {
-                if (currCR.getUpperLeft().getTileYCoordinate() < maxVdistTileY) {
+                if (currCR.getUpperLeft().getTileYCoordinate() > centroidY) {
                     newUpClockRegions.add(currCR);
                 } else {
-                    assert(currCR.getLowerLeft().getTileYCoordinate() > minVdistTileY);
                     newDownClockRegions.add(currCR);
                 }
                 return new HashSet<>();
             });
         }
         if (!newUpClockRegions.isEmpty()) {
-            List<RouteNode> upLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clkNet, maxVdist, newUpClockRegions, false);
+            List<RouteNode> upLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clkNet,
+                    vrouteUp,
+                    newUpClockRegions,
+                    false,
+                    isNodeUnavailable);
             if (upLines != null) {
                 for (RouteNode rnode : upLines) {
                     startingPoints.get(rnode.getTile().getClockRegion()).add(rnode);
@@ -573,7 +606,11 @@ public class UltraScaleClockRouting {
             }
         }
         if (!newDownClockRegions.isEmpty()) {
-            List<RouteNode> downLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clkNet, minVdist, newDownClockRegions, true);
+            List<RouteNode> downLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clkNet,
+                    vrouteDown,
+                    newDownClockRegions,
+                    true,
+                    isNodeUnavailable);
             if (downLines != null) {
                 for (RouteNode rnode : downLines) {
                     startingPoints.get(rnode.getTile().getClockRegion()).add(rnode);
