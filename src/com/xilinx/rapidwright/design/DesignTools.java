@@ -1307,6 +1307,16 @@ public class DesignTools {
             }
         }
 
+        if (bel.isLUT() && bel.getName().endsWith("5LUT")) {
+            String lut6 = bel.getName().replace('5', '6');
+            if (siteInst.getCell(lut6) == null) {
+                SitePinInst vccSpi = siteInst.getSitePinInst(lut6.substring(0,2));
+                assert(vccSpi.getNet().getType() == NetType.VCC);
+                siteInst.unrouteIntraSiteNet(vccSpi.getBELPin(), siteInst.getBELPin(lut6, "A6"));
+                handlePinRemovals(vccSpi, deferRemovals);
+            }
+        }
+
         // Check and remove routethrus that exist that point to removed cell
         List<BEL> belsToRemove = null;
         for (Cell otherCell : siteInst.getCells()) {
