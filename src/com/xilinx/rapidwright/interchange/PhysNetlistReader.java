@@ -119,6 +119,8 @@ public class PhysNetlistReader {
 
         readDesignProperties(physNetlist, design, allStrings);
 
+        workaroundFor5LUTs(design);
+
         return design;
     }
 
@@ -796,6 +798,29 @@ public class PhysNetlistReader {
                     }
                 }
 
+            }
+        }
+    }
+
+    private static void workaroundFor5LUTs(Design design) {
+        final Series series = design.getDevice().getSeries();
+
+        if (series == Series.UltraScalePlus || series == Series.UltraScale) {
+            for (SiteInst si : design.getSiteInsts()) {
+                if (!Utils.isSLICE(si)) {
+                    continue;
+                }
+                for (Character c : LUTTools.lutLetters) {
+                    Cell cell = si.getCell(c + "5LUT");
+                    if (cell == null) {
+                        continue;
+                    }
+                    Net a6net = si.getNetFromSiteWire(c + "6");
+                    if (a6net == null) {
+                        BELPin a6pin = si.getBELPin(c + "6LUT", "A6");
+                        si.routeIntraSiteNet(design.getVccNet(), a6pin, a6pin);
+                    }
+                }
             }
         }
     }
