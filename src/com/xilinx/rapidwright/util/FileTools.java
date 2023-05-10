@@ -1582,6 +1582,30 @@ public class FileTools {
         return returnValue;
     }
 
+    public static Integer runCommand(boolean verbose, String... commands) {
+        if (verbose) System.out.println(commands);
+        int returnValue = 0;
+        Process p = null;
+        try {
+            ProcessBuilder pb = new ProcessBuilder();
+            pb.command(commands);
+            pb.inheritIO();
+            p = pb.start();
+            returnValue = p.waitFor();
+        } catch (IOException e) {
+            e.printStackTrace();
+            MessageGenerator.briefError("ERROR: In running the command \"" + commands + "\"");
+            return null;
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            MessageGenerator.briefError("ERROR: The command was interrupted: \"" + commands + "\"");
+            return null;
+        } finally {
+            if (p != null) p.destroyForcibly();
+        }
+        return returnValue;
+    }
+
     /**
      * A generic method to run a command from the system command line.
      * @param command The command to execute.  This method blocks until the command finishes.
