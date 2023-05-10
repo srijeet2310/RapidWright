@@ -1568,8 +1568,6 @@ public class FileTools {
             input.start();
             err.start();
             returnValue = p.waitFor();
-            input.join();
-            err.join();
         } catch (IOException e) {
             e.printStackTrace();
             MessageGenerator.briefError("ERROR: In running the command \"" + command + "\"");
