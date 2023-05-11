@@ -56,6 +56,7 @@ import java.nio.file.attribute.FileTime;
 import java.security.CodeSource;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -1583,7 +1584,15 @@ public class FileTools {
     }
 
     public static Integer runCommand(boolean verbose, String... commands) {
-        if (verbose) System.out.println(commands);
+        int next = 0;
+        for (int i = 0; i < commands.length; i++) {
+            commands[next] = commands[i];
+            if (commands[next] != null) {
+                next++;
+            }
+        }
+        commands = Arrays.copyOf(commands, next);
+        if (verbose) System.out.println(Arrays.toString(commands));
         int returnValue = 0;
         Process p = null;
         try {
@@ -1594,11 +1603,11 @@ public class FileTools {
             returnValue = p.waitFor();
         } catch (IOException e) {
             e.printStackTrace();
-            MessageGenerator.briefError("ERROR: In running the command \"" + commands + "\"");
+            MessageGenerator.briefError("ERROR: In running the command \"" + Arrays.toString(commands) + "\"");
             return null;
         } catch (InterruptedException e) {
             e.printStackTrace();
-            MessageGenerator.briefError("ERROR: The command was interrupted: \"" + commands + "\"");
+            MessageGenerator.briefError("ERROR: The command was interrupted: \"" + Arrays.toString(commands) + "\"");
             return null;
         } finally {
             if (p != null) p.destroyForcibly();
