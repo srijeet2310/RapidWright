@@ -23,23 +23,27 @@
 
 package com.xilinx.rapidwright.rwroute;
 
-import com.xilinx.rapidwright.design.Design;
-import com.xilinx.rapidwright.design.DesignTools;
-import com.xilinx.rapidwright.design.Net;
-import com.xilinx.rapidwright.design.SiteInst;
-import com.xilinx.rapidwright.design.SitePinInst;
-import com.xilinx.rapidwright.device.Device;
-import com.xilinx.rapidwright.support.LargeTest;
-import com.xilinx.rapidwright.support.RapidWrightDCP;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.xilinx.rapidwright.design.Design;
+import com.xilinx.rapidwright.design.Net;
+import com.xilinx.rapidwright.design.SiteInst;
+import com.xilinx.rapidwright.design.SitePinInst;
+import com.xilinx.rapidwright.device.Device;
+import com.xilinx.rapidwright.device.Part;
+import com.xilinx.rapidwright.device.PartNameTools;
+import com.xilinx.rapidwright.device.Series;
+import com.xilinx.rapidwright.support.LargeTest;
+import com.xilinx.rapidwright.support.RapidWrightDCP;
 
 public class TestRWRoute {
     private static void assertAllSinksRouted(List<SitePinInst> pins) {
@@ -125,23 +129,20 @@ public class TestRWRoute {
         // Sporadically failing due to OutOfMemoryException (see #439)
         long maxMemoryNeeded = 1024L*1024L*1024L*8L;
         Assumptions.assumeTrue(Runtime.getRuntime().maxMemory() >= maxMemoryNeeded);
-        String dcpPath = RapidWrightDCP.getString("picoblaze_partial.dcp");
-        Design design = Design.readCheckpoint(dcpPath);
-        DesignTools.createMissingSitePinInsts(design);
-        DesignTools.createPossiblePinsToStaticNets(design);
 
-        List<SitePinInst> pinsToRoute = new ArrayList<>();
-        for (Net net : design.getNets()) {
-            if (net.getSource() == null && !net.isStaticNet()) {
-                // Source-less nets may exist since this is an out-of-context design
-                continue;
-            }
-            if (!net.hasPIPs()) {
-                pinsToRoute.addAll(net.getSinkPins());
-            }
+        Design design = RapidWrightDCP.loadDCP("picoblaze_partial.dcp");
+        design.setTrackNetChanges(true);
+
+        Design routed = PartialRouter.routeDesignWithUserDefinedArguments(
+                design,
+                new String[]{
+                        "--nonTimingDriven"
+                });
+
+        Assertions.assertFalse(routed.getModifiedNets().isEmpty());
+        for (Net net : routed.getModifiedNets()) {
+            assertAllSinksRouted(net.getPins());
         }
-        PartialRouter.routeDesignPartialNonTimingDriven(design, pinsToRoute);
-        assertAllSinksRouted(pinsToRoute);
     }
 
     /**
@@ -153,19 +154,19 @@ public class TestRWRoute {
     @LargeTest
     @Disabled("Blocked on TimingGraph.build() being able to build partial graphs")
     public void testTimingDrivenPartialRouting() {
-        String dcpPath = RapidWrightDCP.getString("picoblaze_partial.dcp");
-        Design design = Design.readCheckpoint(dcpPath);
-        DesignTools.createMissingSitePinInsts(design);
-        DesignTools.createPossiblePinsToStaticNets(design);
+        Design design = RapidWrightDCP.loadDCP("picoblaze_partial.dcp");
+        design.setTrackNetChanges(true);
 
-        List<SitePinInst> pinsToRoute = new ArrayList<>();
-        for (Net net : design.getNets()) {
-            if (!net.hasPIPs()) {
-                pinsToRoute.addAll(net.getSinkPins());
-            }
+        Design routed = PartialRouter.routeDesignWithUserDefinedArguments(
+                design,
+                new String[]{
+                        "--timingDriven"
+                });
+
+        Assertions.assertFalse(routed.getModifiedNets().isEmpty());
+        for (Net net : routed.getModifiedNets()) {
+            assertAllSinksRouted(net.getPins());
         }
-        PartialRouter.routeDesignPartialTimingDriven(design, pinsToRoute);
-        assertAllSinksRouted(design);
     }
 
     @ParameterizedTest
@@ -216,9 +217,26 @@ public class TestRWRoute {
 
         List<SitePinInst> pinsToRoute = new ArrayList<>();
         pinsToRoute.add(dstSpi);
-        PartialRouter.routeDesignPartialNonTimingDriven(design, pinsToRoute);
+        boolean softPreserve = false;
+        PartialRouter.routeDesignPartialNonTimingDriven(design, pinsToRoute, softPreserve);
 
         Assertions.assertTrue(pinsToRoute.stream().allMatch(SitePinInst::isRouted));
         Assertions.assertTrue(Long.valueOf(System.getProperty("rapidwright.rwroute.nodesPopped")) <= nodesPoppedLimit);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Series.class)
+    public void testRWRouteDeviceSupport(Series series) {
+        for (Part part : PartNameTools.getAllParts(series)) {
+            Design design = new Design("test", part.getName());
+            if (!RWRoute.SUPPORTED_SERIES.contains(series)) {
+                RuntimeException e = Assertions.assertThrows(RuntimeException.class,
+                        () -> RWRoute.routeDesignFullNonTimingDriven(design),
+                        "Expected RuntimeException() but was not thrown.");
+                Assertions.assertTrue(e.getMessage().equals(RWRoute.getUnsupportedSeriesMessage(part)));
+            }
+            // Only test one part per series
+            break;
+        }
     }
 }

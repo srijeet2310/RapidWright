@@ -1,10 +1,8 @@
 /*
- *
- * Copyright (c) 2020-2022, Xilinx, Inc.
- * Copyright (c) 2022, Advanced Micro Devices, Inc.
+ * Copyright (c) 2023, Advanced Micro Devices, Inc.
  * All rights reserved.
  *
- * Author: Chris Lavin, Xilinx Research Labs.
+ * Author: Eddie Hung, Advanced Micro Devices, Inc.
  *
  * This file is part of RapidWright.
  *
@@ -21,13 +19,23 @@
  * limitations under the License.
  *
  */
-package com.xilinx.rapidwright.edif;
 
-/**
- * Provides a standard method to get a unique key for certain EDIF types to be enumerated.
- *
- */
-public interface EDIFEnumerable {
+package com.xilinx.rapidwright.examples;
 
-    public String getUniqueKey();
+import org.junit.jupiter.api.Test;
+
+public class TestExamples {
+    @Test
+    public void testPipelineGenerator() {
+        PipelineGenerator.main(new String[]{
+                "-o", "/dev/null"
+        });
+    }
+
+    @Test
+    public void testPipelineGeneratorWithRouting() {
+        PipelineGeneratorWithRouting.main(new String[]{
+                "-o", "/dev/null"
+        });
+    }
 }

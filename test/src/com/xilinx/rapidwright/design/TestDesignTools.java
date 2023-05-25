@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021-2022, Xilinx, Inc.
- * Copyright (c) 2022, Advanced Micro Devices, Inc.
+ * Copyright (c) 2022-2023, Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Author: Chris Lavin, Xilinx Research Labs.
@@ -23,6 +23,26 @@
 
 package com.xilinx.rapidwright.design;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+
+import com.xilinx.rapidwright.device.Series;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import com.xilinx.rapidwright.design.blocks.PBlock;
+import com.xilinx.rapidwright.design.blocks.UtilizationType;
 import com.xilinx.rapidwright.device.BELPin;
 import com.xilinx.rapidwright.device.Device;
 import com.xilinx.rapidwright.device.PIP;
@@ -34,22 +54,6 @@ import com.xilinx.rapidwright.edif.EDIFTools;
 import com.xilinx.rapidwright.support.RapidWrightDCP;
 import com.xilinx.rapidwright.tests.CodePerfTracker;
 import com.xilinx.rapidwright.util.Pair;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
 
 public class TestDesignTools {
 
@@ -847,5 +851,101 @@ public class TestDesignTools {
 
         Assertions.assertEquals("[ff1/D, ff2/D]",
                 DesignTools.getPortInstsFromSitePinInst(spi).toString());
+    }
+
+    @Test
+    public void testCalculateUtilization() {
+        Design design = RapidWrightDCP.loadDCP("bnn.dcp");
+
+        for (Entry<UtilizationType, Integer> e : DesignTools.calculateUtilization(design).entrySet()) {
+            switch (e.getKey()) {
+            case CLB_LUTS:
+                Assertions.assertEquals(3097, e.getValue());
+                break;
+            case CLB_REGS:
+                Assertions.assertEquals(2754, e.getValue());
+                break;
+            case CARRY8S:
+                Assertions.assertEquals(113, e.getValue());
+                break;
+            case LUTS_AS_LOGIC:
+                Assertions.assertEquals(3055, e.getValue());
+                break;
+            case LUTS_AS_MEMORY:
+                Assertions.assertEquals(42, e.getValue());
+                break;
+            case DSPS:
+                Assertions.assertEquals(4, e.getValue());
+                break;
+            default:
+            }
+        }
+
+        PBlock pblock = new PBlock(design.getDevice(), "SLICE_X78Y145:SLICE_X80Y149 DSP48E2_X9Y58:DSP48E2_X9Y59");
+        for (Entry<UtilizationType, Integer> e : DesignTools.calculateUtilization(design, pblock).entrySet()) {
+            switch (e.getKey()) {
+            case CLB_LUTS:
+                Assertions.assertEquals(13, e.getValue());
+                break;
+            case CLB_REGS:
+                Assertions.assertEquals(30, e.getValue());
+                break;
+            case CARRY8S:
+                Assertions.assertEquals(4, e.getValue());
+                break;
+            case LUTS_AS_LOGIC:
+                Assertions.assertEquals(13, e.getValue());
+                break;
+            case LUTS_AS_MEMORY:
+                Assertions.assertEquals(0, e.getValue());
+                break;
+            case DSPS:
+                Assertions.assertEquals(1, e.getValue());
+                break;
+            default:
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            // US+
+            Device.AWS_F1+",SLICE_X0Y0/AFF,SRST1,true",
+            Device.AWS_F1+",SLICE_X0Y0/AFF2,SRST1,false",
+            Device.AWS_F1+",SLICE_X1Y1/HFF,SRST2,true",
+            Device.AWS_F1+",SLICE_X1Y1/HFF2,SRST2,false",
+            // US
+            Device.KCU105+",SLICE_X0Y0/AFF,SRST_B1,true",
+            Device.KCU105+",SLICE_X0Y0/AFF2,SRST_B1,false",
+            Device.KCU105+",SLICE_X1Y1/HFF,SRST_B2,true",
+            Device.KCU105+",SLICE_X1Y1/HFF2,SRST_B2,false",
+            // Series7
+            Device.PYNQ_Z1+",SLICE_X0Y0/AFF,SR,true",
+            Device.PYNQ_Z1+",SLICE_X0Y0/A5FF,SR,false",
+            Device.PYNQ_Z1+",SLICE_X1Y1/DFF,SR,true",
+            Device.PYNQ_Z1+",SLICE_X1Y1/D5FF,SR,false",
+    })
+    public void testCreateCeSrRstPinsToVCC(String deviceName, String location, String sitePinName, boolean connectGnd) {
+        Design design = new Design("test", deviceName);
+        Cell c = design.createAndPlaceCell("ff", Unisim.FDRE, location);
+        BELPin sr = c.getBEL().getPin("SR");
+        SiteInst si = c.getSiteInst();
+        Assertions.assertNull(si.getNetFromSiteWire(sr.getSiteWireName()));
+        if (connectGnd) {
+            Net gnd = design.getGndNet();
+            Assertions.assertTrue(si.routeIntraSiteNet(gnd, sr, sr));
+        }
+
+        DesignTools.createCeSrRstPinsToVCC(design);
+
+        SitePinInst spi = si.getSitePinInst(sitePinName);
+        if (design.getDevice().getSeries() == Series.Series7) {
+            // Nothing done for Series7
+            Assertions.assertNull(spi);
+        } else {
+            Assertions.assertNotNull(spi);
+            Net vcc = design.getVccNet();
+            Assertions.assertEquals(vcc, spi.getNet());
+        }
     }
 }

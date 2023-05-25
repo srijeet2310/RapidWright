@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021-2022, Xilinx, Inc.
- * Copyright (c) 2022, Advanced Micro Devices, Inc.
+ * Copyright (c) 2022-2023, Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Author: Chris Lavin, Xilinx Research Labs.
@@ -29,18 +29,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.xilinx.rapidwright.design.Unisim;
+import com.xilinx.rapidwright.device.Series;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.xilinx.rapidwright.design.Design;
 import com.xilinx.rapidwright.device.Device;
 import com.xilinx.rapidwright.device.IOStandard;
 import com.xilinx.rapidwright.device.Part;
 import com.xilinx.rapidwright.device.PartNameTools;
+import com.xilinx.rapidwright.edif.compare.EDIFNetlistComparator;
 import com.xilinx.rapidwright.support.RapidWrightDCP;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 class TestEDIFNetlist {
 
@@ -71,7 +75,7 @@ class TestEDIFNetlist {
 
         final EDIFCell prototypePrim = Design.getPrimitivesLibrary().getCell(prim);
 
-        EDIFCell primCell = new EDIFCell(netlist.getHDIPrimitivesLibrary(), prototypePrim);
+        EDIFCell primCell = new EDIFCell(netlist.getHDIPrimitivesLibrary(), prototypePrim, prim);
 
         primCell.createCellInst("test" + prim, netlist.getTopCell());
 
@@ -88,17 +92,136 @@ class TestEDIFNetlist {
         Design loadAgain = Design.readCheckpoint(outputDCP);
         Assertions.assertTrue(loadAgain.getNetlist().getHDIPrimitivesLibrary().containsCell("OBUFTDS"));
 
-        final Part part2 = PartNameTools.getPart(Device.KCU105);
-        Design testDesign2 = createSamplePrimitiveDesign("OBUFDS", part2);
-        testDesign2.getNetlist().expandMacroUnisims(part.getSeries());
-        Assertions.assertTrue(testDesign2.getNetlist().getHDIPrimitivesLibrary().containsCell("OBUFDS_DUAL_BUF"));
-        testDesign2.getNetlist().collapseMacroUnisims(part.getSeries());
-        Assertions.assertTrue(testDesign2.getNetlist().getHDIPrimitivesLibrary().containsCell("OBUFDS"));
-        Assertions.assertFalse(testDesign2.getNetlist().getHDIPrimitivesLibrary().containsCell("OBUFDS_DUAL_BUF"));
+        Design testDesign2 = createSamplePrimitiveDesign("OBUFDS", part);
+        EDIFNetlist testNetlist2 = testDesign2.getNetlist();
+
+        testNetlist2.expandMacroUnisims(part.getSeries());
+
+        Assertions.assertTrue(testNetlist2.getHDIPrimitivesLibrary().containsCell("OBUFDS_DUAL_BUF"));
+
+        testNetlist2.collapseMacroUnisims(part.getSeries());
+
+        Assertions.assertTrue(testNetlist2.getHDIPrimitivesLibrary().containsCell("OBUFDS"));
+        Assertions.assertFalse(testNetlist2.getHDIPrimitivesLibrary().containsCell("OBUFDS_DUAL_BUF"));
         testDesign2.getTopEDIFCell().getCellInst("testOBUFDS").addProperty("IOStandard", IOStandard.LVCMOS12.name());
-        testDesign2.getNetlist().expandMacroUnisims(part.getSeries());
-        Assertions.assertTrue(testDesign2.getNetlist().getHDIPrimitivesLibrary().containsCell("OBUFDS"));
-        Assertions.assertFalse(testDesign2.getNetlist().getHDIPrimitivesLibrary().containsCell("OBUFDS_DUAL_BUF"));
+
+        testNetlist2.expandMacroUnisims(part.getSeries());
+
+        Assertions.assertTrue(testNetlist2.getHDIPrimitivesLibrary().containsCell("OBUFDS"));
+        Assertions.assertFalse(testNetlist2.getHDIPrimitivesLibrary().containsCell("OBUFDS_DUAL_BUF"));
+    }
+
+    @Test
+    void testMacroExpansionWithAndWithoutException() {
+        final Part part = PartNameTools.getPart(PART_NAME);
+        Design testDesign = createSamplePrimitiveDesign("OBUFDS", part);
+
+        EDIFNetlist testNetlist = testDesign.getNetlist();
+        testNetlist.setDevice(testDesign.getDevice());
+
+        EDIFCellInst wontBeExpanded = testDesign.getTopEDIFCell().getCellInst("testOBUFDS");
+        wontBeExpanded.addProperty("IOStandard", IOStandard.LVCMOS12.name());
+        EDIFCellInst willBeExpanded = testNetlist.getTopCell().createChildCellInst("willBeExpanded", testNetlist.getHDIPrimitive(Unisim.OBUFDS));
+
+        testNetlist.expandMacroUnisims(part.getSeries());
+
+        EDIFCell obufdsCell = testNetlist.getHDIPrimitivesLibrary().getCell("OBUFDS");
+        EDIFCell obufdsDualBufCell = testNetlist.getHDIPrimitivesLibrary().getCell("OBUFDS_DUAL_BUF");
+
+        Assertions.assertSame(obufdsCell, wontBeExpanded.getCellType());
+        Assertions.assertSame(obufdsDualBufCell, willBeExpanded.getCellType());
+
+        testNetlist.collapseMacroUnisims(part.getSeries());
+
+        Assertions.assertSame(obufdsCell, testNetlist.getHDIPrimitivesLibrary().getCell("OBUFDS"));
+        Assertions.assertFalse(testNetlist.getHDIPrimitivesLibrary().containsCell("OBUFDS_DUAL_BUF"));
+
+        Assertions.assertSame(obufdsCell, wontBeExpanded.getCellType());
+        Assertions.assertSame(obufdsCell, willBeExpanded.getCellType());
+
+        testNetlist.expandMacroUnisims(part.getSeries());
+
+        Assertions.assertNotSame(obufdsCell, testNetlist.getHDIPrimitivesLibrary().getCell("OBUFDS"));
+        Assertions.assertNotSame(obufdsDualBufCell, testNetlist.getHDIPrimitivesLibrary().getCell("OBUFDS_DUAL_BUF"));
+    }
+
+    @Test
+    void testMacroExpansionPortParents() {
+        final Part part = PartNameTools.getPart(Device.KCU105);
+        Design testDesign = createSamplePrimitiveDesign("OBUFDS", part);
+
+        EDIFCell cell = testDesign.getNetlist().getHDIPrimitivesLibrary().getCell("OBUFDS");
+        for (EDIFPort p : cell.getPorts()) {
+            Assertions.assertSame(p.getParentCell(), cell);
+        }
+
+        testDesign.getNetlist().expandMacroUnisims(part.getSeries());
+
+        EDIFCell expandedCell = testDesign.getNetlist().getHDIPrimitivesLibrary().getCell("OBUFDS_DUAL_BUF");
+        Assertions.assertNotNull(expandedCell);
+        for (EDIFPort p : expandedCell.getPorts()) {
+            Assertions.assertSame(p.getParentCell(), expandedCell);
+        }
+
+        testDesign.getNetlist().collapseMacroUnisims(part.getSeries());
+
+        EDIFCell collapsedCell = testDesign.getNetlist().getHDIPrimitivesLibrary().getCell("OBUFDS");
+        Assertions.assertNotNull(collapsedCell);
+        for (EDIFPort p : collapsedCell.getPorts()) {
+            Assertions.assertEquals(p.getParentCell(), collapsedCell);
+        }
+    }
+
+    @Test
+    void testMacroExpansionInstanceTypes() {
+        final Part part = PartNameTools.getPart(Device.AWS_F1);
+        String macroName = "DSP48E2";
+        Design testDesign = createSamplePrimitiveDesign(macroName, part);
+        EDIFNetlist testNetlist = testDesign.getNetlist();
+        EDIFLibrary netlistPrimLibrary = testNetlist.getHDIPrimitivesLibrary();
+
+        EDIFCell cell = netlistPrimLibrary.getCell(macroName);
+        Assertions.assertTrue(cell.getCellInsts().isEmpty());
+
+        // Singleton libraries
+        EDIFLibrary macroLibrary = Design.getMacroPrimitives(part.getSeries());
+        EDIFLibrary primLibrary = Design.getPrimitivesLibrary();
+        // Netlist should have its own copy of the singleton library
+        Assertions.assertNotSame(netlistPrimLibrary, primLibrary);
+
+        EDIFCell macroCell = macroLibrary.getCell(macroName);
+        Assertions.assertNotSame(macroCell, cell);
+        Assertions.assertEquals(8, macroCell.getCellInsts().size());
+
+        testNetlist.expandMacroUnisims(part.getSeries());
+
+        // Expanded cell must not be the same cell as before, and be a copy
+        // of the macro library's cell
+        EDIFCell expandedCell = netlistPrimLibrary.getCell(macroName);
+        Assertions.assertNotSame(expandedCell, cell);
+        Assertions.assertNotSame(expandedCell, macroCell);
+        Assertions.assertEquals(8, expandedCell.getCellInsts().size());
+        for (EDIFCellInst eci : expandedCell.getCellInsts()) {
+            // Its instances should also refer to netlist's primitive library copy
+            Assertions.assertSame(netlistPrimLibrary, eci.getCellType().getLibrary());
+        }
+
+        // Check that original macro cell wasn't inadvertently modified
+        for (EDIFCellInst eci : macroCell.getCellInsts()) {
+            Assertions.assertNotSame(netlistPrimLibrary, eci.getCellType().getLibrary());
+        }
+
+        testNetlist.collapseMacroUnisims(part.getSeries());
+
+        EDIFCell collapsedCell = netlistPrimLibrary.getCell(macroName);
+        Assertions.assertNotSame(collapsedCell, cell);
+        Assertions.assertTrue(collapsedCell.getCellInsts().isEmpty());
+
+        // Check original macro cell wasn't affected
+        Assertions.assertEquals(8, macroCell.getCellInsts().size());
+        for (EDIFCellInst eci : macroCell.getCellInsts()) {
+            Assertions.assertNotSame(netlistPrimLibrary, eci.getCellType().getLibrary());
+        }
     }
 
     @Test
@@ -286,5 +409,94 @@ class TestEDIFNetlist {
         } else {
             Assertions.assertEquals(dstLibrary.getCells().size(), 1);
         }
+    }
+
+    @Test
+    public void testBussedPortNamingCollision(@TempDir Path path) {
+        final EDIFNetlist origNetlist = EDIFTools.createNewNetlist("test");
+
+        EDIFCell top = origNetlist.getTopCell();
+
+        EDIFCellInst ff = top.createChildCellInst("ff", Design.getPrimitivesLibrary().getCell("FDRE"));
+        origNetlist.getHDIPrimitivesLibrary().addCell(ff.getCellType());
+
+        String portName = "unfortunate_name";
+
+        // Create two ports, one single-bit and another bussed with the same root name
+        EDIFPort port0 = top.createPort(portName, EDIFDirection.INOUT, 1);
+        EDIFPort port1 = top.createPort(portName + "[1:0]", EDIFDirection.INOUT, 2);
+
+        EDIFNet net0 = top.createNet("net0");
+        net0.createPortInst(port0);
+        net0.createPortInst("D", ff);
+
+        EDIFNet net1 = top.createNet("net1");
+        net1.createPortInst(port1, 1);
+        net1.createPortInst("R", ff);
+
+        Path tempFile = path.resolve("test.edf");
+        origNetlist.exportEDIF(tempFile);
+
+        // Check using EDIFNetlistComparator
+        EDIFNetlist testNetlist = EDIFTools.readEdifFile(tempFile);
+        EDIFNetlistComparator comparer = new EDIFNetlistComparator();
+        Assertions.assertEquals(0, comparer.compareNetlists(origNetlist, testNetlist));
+
+        // Perform explicit check of port widths
+        EDIFCell testTopCell = testNetlist.getTopCell();
+        EDIFPort testPort0 = testTopCell.getNet(net0.getName()).getPortInst(null, portName).getPort();
+        Assertions.assertEquals(port0.getWidth(), testPort0.getWidth());
+        EDIFPort testPort1 = testTopCell.getNet(net1.getName()).getPortInst(null, portName + "[0]").getPort();
+        Assertions.assertEquals(port1.getWidth(), testPort1.getWidth());
+    }
+
+    @Test
+    public void testGetIOStandard() {
+        final EDIFNetlist netlist = EDIFTools.createNewNetlist("test");
+        netlist.setDevice(Device.getDevice(Device.AWS_F1));
+
+        EDIFCell top = netlist.getTopCell();
+        EDIFPort port = top.createPort("O", EDIFDirection.OUTPUT, 1);
+        EDIFCellInst obufds = top.createChildCellInst("obuf", Design.getPrimitivesLibrary().getCell("OBUFDS"));
+        EDIFNet net = top.createNet("O");
+        new EDIFPortInst(port, net);
+        new EDIFPortInst(obufds.getPort("O"), net, obufds);
+        Assertions.assertEquals("[string(DEFAULT)]", netlist.getIOStandards(obufds).toString());
+
+        // Previous call to netlist.getIOStandard() will have initialized this map,
+        // clear it here so that it gets re-initialized
+        netlist.resetCellInstIOStandardFallbackMap();
+
+        // Test that top-level-port's connected net property is propagated
+        net.addProperty(EDIFNetlist.IOSTANDARD_PROP, "LVDS");
+        Assertions.assertEquals("[string(LVDS)]", netlist.getIOStandards(obufds).toString());
+
+        // Test that cell inst takes priority
+        obufds.addProperty(EDIFNetlist.IOSTANDARD_PROP, "DIFF_SSTL12_DCI");
+        Assertions.assertEquals("[string(DIFF_SSTL12_DCI)]", netlist.getIOStandards(obufds).toString());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "LVDS,OBUFDS",
+            "BLVDS_25,OBUFDS_DUAL_BUF"
+    })
+    public void testExpandMacroUnisimsExceptionWithFallbackIOStandard(String standard, String cellType) {
+        final EDIFNetlist netlist = EDIFTools.createNewNetlist("test");
+        netlist.setDevice(Device.getDevice(Device.AWS_F1));
+
+        EDIFCell top = netlist.getTopCell();
+        EDIFPort port = top.createPort("O", EDIFDirection.OUTPUT, 1);
+        EDIFCellInst obufds = top.createChildCellInst("obuf", netlist.getHDIPrimitive(Unisim.OBUFDS));
+        netlist.getHDIPrimitivesLibrary().addCell(obufds.getCellType());
+        EDIFNet net = top.createNet("O");
+        new EDIFPortInst(port, net);
+        new EDIFPortInst(obufds.getPort("O"), net, obufds);
+
+        // Set IOStandard only on top-level-port's connected net
+        net.addProperty(EDIFNetlist.IOSTANDARD_PROP, standard);
+
+        netlist.expandMacroUnisims(Series.UltraScalePlus);
+        Assertions.assertEquals(cellType, obufds.getCellType().getName());
     }
 }

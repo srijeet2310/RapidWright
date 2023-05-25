@@ -1,7 +1,7 @@
 /*
  *
  * Copyright (c) 2017-2022, Xilinx, Inc.
- * Copyright (c) 2022, Advanced Micro Devices, Inc.
+ * Copyright (c) 2022-2023, Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Author: Chris Lavin, Xilinx Research Labs.
@@ -36,7 +36,7 @@ import java.util.List;
  * Represents a port on an {@link EDIFCell} within an EDIF netlist.
  * Created on: May 11, 2017
  */
-public class EDIFPort extends EDIFPropertyObject implements EDIFEnumerable {
+public class EDIFPort extends EDIFPropertyObject {
 
     private EDIFCell parentCell;
 
@@ -260,7 +260,12 @@ public class EDIFPort extends EDIFPropertyObject implements EDIFEnumerable {
         os.write(EXPORT_CONST_INDENT);
         os.write(EXPORT_CONST_PORT_BEGIN);
         if (width > 1) os.write(EXPORT_CONST_ARRAY_BEGIN);
-        exportEDIFName(os, cache);
+        if (isBus()) {
+            exportEDIFBusName(os, cache);
+        } else {
+            exportEDIFName(os, cache);
+        }
+
         if (width > 1) {
             os.write(' ');
             os.write(Integer.toString(width).getBytes(StandardCharsets.UTF_8));
@@ -276,6 +281,17 @@ public class EDIFPort extends EDIFPropertyObject implements EDIFEnumerable {
         }
         os.write(')');
         os.write('\n');
+    }
+
+    /**
+     * Writes out valid EDIF syntax the name and/or rename of this port to the
+     * provided output writer.
+     * 
+     * @param os The stream to export the EDIF syntax to.
+     * @throws IOException
+     */
+    public void exportEDIFBusName(OutputStream os, EDIFWriteLegalNameCache<?> cache) throws IOException {
+        exportSomeEDIFName(os, getName(), cache.getEDIFRename(busName));
     }
 
     /**
@@ -307,11 +323,6 @@ public class EDIFPort extends EDIFPropertyObject implements EDIFEnumerable {
         if (getName().contains("["))
             return new int[] {Integer.parseInt(getName().substring(lastLeftBracket,getName().length()-1))};
         return null;
-    }
-
-    @Override
-    public String getUniqueKey() {
-        return parentCell.getUniqueKey() + "_" + getName();
     }
 
     public boolean isBusRangeEqual(EDIFPort otherPort) {

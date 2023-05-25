@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2020-2022, Xilinx, Inc.
- * Copyright (c) 2022, Advanced Micro Devices, Inc.
+ * Copyright (c) 2022-2023, Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Author: Chris Lavin, Xilinx Research Labs.
@@ -24,37 +24,27 @@
 package com.xilinx.rapidwright.interchange;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.Map;
 
-import com.xilinx.rapidwright.edif.EDIFEnumerable;
-
-public class Enumerator<T> extends ArrayList<T> {
+public class IdentityEnumerator<T> extends ArrayList<T> {
 
     private static final long serialVersionUID = 5235125492429382642L;
 
-    private HashMap<String, Integer> map = new HashMap<String, Integer>();
-
-    private String getKey(T obj) {
-        String key = null;
-        if (obj instanceof EDIFEnumerable) {
-            key = ((EDIFEnumerable)obj).getUniqueKey();
-        } else {
-            key = obj.toString();
-        }
-        return key;
-    }
+    private Map<T, Integer> map = new IdentityHashMap<>();
 
     public Integer maybeGetIndex(T obj) {
-        String key = getKey(obj);
-        return map.get(key);
+        return map.get(obj);
     }
 
     public Integer getIndex(T obj) {
-        String key = getKey(obj);
-        return map.computeIfAbsent(key, ($) -> {
+        int size = map.size();
+        Integer index = map.putIfAbsent(obj, size);
+        if (index == null) {
+            index = size;
             add(obj);
-            return map.size();
-        });
+        }
+        return index;
     }
 
     public void addObject(T obj) {
@@ -63,7 +53,7 @@ public class Enumerator<T> extends ArrayList<T> {
 
     public void update(T obj, int index) {
         set(index, obj);
-        map.put(getKey(obj), index);
+        map.put(obj, index);
     }
 
     public void ensureSize(int size) {
@@ -75,7 +65,6 @@ public class Enumerator<T> extends ArrayList<T> {
 
     @Override
     public T get(int index) {
-        if (size() -1 < index) return null;
         return super.get(index);
     }
 

@@ -25,7 +25,9 @@
 package com.xilinx.rapidwright.rwroute;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -33,6 +35,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import com.xilinx.rapidwright.design.Design;
@@ -43,12 +46,10 @@ import com.xilinx.rapidwright.design.SitePinInst;
 import com.xilinx.rapidwright.device.IntentCode;
 import com.xilinx.rapidwright.device.Node;
 import com.xilinx.rapidwright.device.PIP;
+import com.xilinx.rapidwright.device.Part;
+import com.xilinx.rapidwright.device.Series;
 import com.xilinx.rapidwright.device.Tile;
 import com.xilinx.rapidwright.device.TileTypeEnum;
-import com.xilinx.rapidwright.util.MessageGenerator;
-import com.xilinx.rapidwright.util.Pair;
-import com.xilinx.rapidwright.util.RuntimeTracker;
-import com.xilinx.rapidwright.util.RuntimeTrackerTree;
 import com.xilinx.rapidwright.router.RouteThruHelper;
 import com.xilinx.rapidwright.tests.CodePerfTracker;
 import com.xilinx.rapidwright.timing.ClkRouteTiming;
@@ -56,6 +57,10 @@ import com.xilinx.rapidwright.timing.TimingManager;
 import com.xilinx.rapidwright.timing.TimingVertex;
 import com.xilinx.rapidwright.timing.delayestimator.DelayEstimatorBase;
 import com.xilinx.rapidwright.timing.delayestimator.InterconnectInfo;
+import com.xilinx.rapidwright.util.MessageGenerator;
+import com.xilinx.rapidwright.util.Pair;
+import com.xilinx.rapidwright.util.RuntimeTracker;
+import com.xilinx.rapidwright.util.RuntimeTrackerTree;
 import com.xilinx.rapidwright.util.Utils;
 
 /**
@@ -151,18 +156,39 @@ public class RWRoute{
     private Pair<Float, TimingVertex> maxDelayAndTimingVertex;
 
     /** A map storing routes from CLK_OUT to different INT tiles that connect to sink pins of a global clock net */
-    private Map<String, List<String>> routesToSinkINTTiles;
+    protected Map<String, List<String>> routesToSinkINTTiles;
+
+    public static final EnumSet<Series> SUPPORTED_SERIES;
+
+    static {
+        SUPPORTED_SERIES = EnumSet.of(Series.UltraScale, Series.UltraScalePlus);
+    }
 
     public RWRoute(Design design, RWRouteConfig config) {
         this.design = design;
         this.config = config;
     }
 
-    protected void preprocess() {
+    protected static String getUnsupportedSeriesMessage(Part part) {
+        return "ERROR: RWRoute does not support routing the " + part.getName() + " from the " 
+                + part.getSeries() + " series. Please re-target the design to a part from a "
+                + "supported series: " + SUPPORTED_SERIES;
+    }
+
+    protected static void preprocess(Design design) {
+        Series series = design.getPart().getSeries();
+        if (!SUPPORTED_SERIES.contains(series)) {
+            throw new RuntimeException(getUnsupportedSeriesMessage(design.getPart()));
+        }
+
         // Pre-processing of the design regarding physical net names pins
         DesignTools.makePhysNetNamesConsistent(design);
         DesignTools.createPossiblePinsToStaticNets(design);
         DesignTools.createMissingSitePinInsts(design);
+    }
+
+    protected void preprocess() {
+        preprocess(design);
     }
 
     protected void initialize() {
@@ -342,16 +368,23 @@ public class RWRoute{
      * TODO: fix the potential issue.
      */
     protected void routeGlobalClkNets() {
-        if (clkNets.size() > 0) System.out.println("INFO: Route clock nets");
+        if (clkNets.isEmpty())
+            return;
+        Predicate<Node> isPreservedNode = (node) -> false;
+        routeGlobalClkNets(isPreservedNode);
+    }
+
+    protected void routeGlobalClkNets(Predicate<Node> isPreservedNode) {
+        System.out.println("INFO: Route clock nets");
         for (Net clk : clkNets) {
             if (routesToSinkINTTiles != null) {
                 // routes clock nets with references of partial routes
                 System.out.println("INFO: Route with clock route and timing data");
-                GlobalSignalRouting.routeClkWithPartialRoutes(clk, routesToSinkINTTiles, design.getDevice());
+                GlobalSignalRouting.routeClkWithPartialRoutes(clk, routesToSinkINTTiles, design.getDevice(), isPreservedNode);
             } else {
                 // routes clock nets from scratch
                 System.out.println("INFO: Route with symmetric non-timing-driven clock router");
-                GlobalSignalRouting.symmetricClkRouting(clk, design.getDevice());
+                GlobalSignalRouting.symmetricClkRouting(clk, design.getDevice(), isPreservedNode);
             }
             preserveNet(clk, false);
         }
@@ -420,13 +453,13 @@ public class RWRoute{
                         if (preservedNet != null) {
                             // If one is present, it is unavailable only if it isn't carrying
                             // the net undergoing routing
-                            return preservedNet == net ? GlobalSignalRouting.NodeStatus.INUSE
-                                    : GlobalSignalRouting.NodeStatus.UNAVAILABLE;
+                            return preservedNet == net ? NodeStatus.INUSE
+                                    : NodeStatus.UNAVAILABLE;
                         }
                         // A RouteNode will only be created if the net is necessary for
                         // a to-be-routed connection
-                        return routingGraph.getNode(node) == null ? GlobalSignalRouting.NodeStatus.AVAILABLE
-                                : GlobalSignalRouting.NodeStatus.UNAVAILABLE;
+                        return routingGraph.getNode(node) == null ? NodeStatus.AVAILABLE
+                                : NodeStatus.UNAVAILABLE;
                     },
                     design, routethruHelper);
 
@@ -479,6 +512,7 @@ public class RWRoute{
             } else {
                 Node sinkINTNode = nodes.get(0);
                 indirectConnections.add(connection);
+                checkSinkRoutability(net, sinkINTNode);
                 connection.setSinkRnode(getOrCreateRouteNode(sinkINTNode, RouteNodeType.PINFEED_I));
                 if (sourceINTRnode == null) {
                     Node sourceINTNode = RouterHelper.projectOutputPinToINTNode(source);
@@ -528,6 +562,14 @@ public class RWRoute{
             }
         }
         return netWrapper;
+    }
+
+    protected void checkSinkRoutability(Net net, Node sinkNode) {
+        Net oldNet = routingGraph.getPreservedNet(sinkNode);
+        if (oldNet != null && oldNet != net) {
+            throw new RuntimeException("ERROR: Sink node " + sinkNode + " of net '" + net.getName() + "' is "
+                    + " preserved by net '" + oldNet.getName() + "'");
+        }
     }
 
     /**
@@ -1755,10 +1797,8 @@ public class RWRoute{
 
     /**
      * The main interface of {@link RWRoute} that reads in a {@link Design} checkpoint,
-     * and parses the arguments for the {@link RWRouteConfig} Object of the router.
-     * It also instantiates a {@link RWRoute} Object or a {@link PartialRouter}
-     * based on the partialRouting parameter and calls the route method to route the design.
-     * @param args An array of strings that are used to create a {@link RWRouteConfig} Object for the router.
+     * and parses the arguments for the {@link RWRouteConfig} object of the router.
+     * @param args An array of strings that are used to create a {@link RWRouteConfig} object for the router.
      */
     public static void main(String[] args) {
         if (args.length < 2) {
@@ -1771,7 +1811,8 @@ public class RWRoute{
         CodePerfTracker t = new CodePerfTracker("RWRoute", true);
 
         // Reads in a design checkpoint and routes it
-        Design routed = RWRoute.routeDesignWithUserDefinedArguments(Design.readCheckpoint(args[0]), args);
+        String[] rwrouteArgs = Arrays.copyOfRange(args, 2, args.length);
+        Design routed = routeDesignWithUserDefinedArguments(Design.readCheckpoint(args[0]), rwrouteArgs);
 
         // Writes out the routed design checkpoint
         routed.writeCheckpoint(routedDCPfileName,t);

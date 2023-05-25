@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2022, Xilinx, Inc.
- * Copyright (c) 2022, Advanced Micro Devices, Inc.
+ * Copyright (c) 2022-2023, Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Author: Keith Rothman, Google, Inc.
@@ -282,7 +282,7 @@ public class EnumerateCellBelMapping {
         }
     }
 
-    private void writePinMap(Enumerator<String> allStrings, Set<Map.Entry<String, String>> pins, StructList.Builder<CellBelPinEntry.Builder> pinsObj) {
+    private void writePinMap(StringEnumerator allStrings, Set<Map.Entry<String, String>> pins, StructList.Builder<CellBelPinEntry.Builder> pinsObj) {
         List<Map.Entry<String, String>> pinsToSort = new ArrayList<Map.Entry<String, String>>();
         pinsToSort.addAll(pins);
         pinsToSort.sort(new StringPairCompare());
@@ -296,7 +296,7 @@ public class EnumerateCellBelMapping {
         }
     }
 
-    private void writeCommonSiteTypeBels(Enumerator<String> allStrings, CommonCellBelPinMaps.Builder builder, Set<Map.Entry<SiteTypeEnum, String>> siteTypesAndBels) {
+    private void writeCommonSiteTypeBels(StringEnumerator allStrings, CommonCellBelPinMaps.Builder builder, Set<Map.Entry<SiteTypeEnum, String>> siteTypesAndBels) {
         Map<SiteTypeEnum, Set<String>> siteTypesToBels = new HashMap<SiteTypeEnum, Set<String>>();
 
         for (Map.Entry<SiteTypeEnum, String> siteTypeAndBel : siteTypesAndBels) {
@@ -335,7 +335,7 @@ public class EnumerateCellBelMapping {
         }
     }
 
-    private void writeParameterSiteTypeBels(Enumerator<String> allStrings, ParameterCellBelPinMaps.Builder builder, Set<Map.Entry<SiteTypeEnum, Map.Entry<String, String>>> siteTypesBelsAndParameters) {
+    private void writeParameterSiteTypeBels(StringEnumerator allStrings, ParameterCellBelPinMaps.Builder builder, Set<Map.Entry<SiteTypeEnum, Map.Entry<String, String>>> siteTypesBelsAndParameters) {
         List<Map.Entry<SiteTypeEnum, Map.Entry<String, String>>> siteTypesBelsAndParametersSorted = new ArrayList<Map.Entry<SiteTypeEnum, Map.Entry<String, String>>>();
         siteTypesBelsAndParametersSorted.addAll(siteTypesBelsAndParameters);
         siteTypesBelsAndParametersSorted.sort(new SiteTypeStringPairCompare());
@@ -369,7 +369,7 @@ public class EnumerateCellBelMapping {
         }
     }
 
-    public void writeMapping(Enumerator<String> allStrings, CellBelMapping.Builder builder) {
+    public void writeMapping(StringEnumerator allStrings, CellBelMapping.Builder builder) {
         checkSiteInvariance();
 
         Set<Map.Entry<String, String>> allPins = createAllPins();
@@ -711,7 +711,7 @@ public class EnumerateCellBelMapping {
         return siteMap;
     }
 
-    public static void populateCellBelPin(Enumerator<String> allStrings, Map<SiteTypeEnum, List<Site>> siteMap, CellBelMapping.Builder mapping, EDIFCell topLevelCell, EDIFCell cell, Design design) {
+    public static void populateCellBelPin(StringEnumerator allStrings, Map<SiteTypeEnum, List<Site>> siteMap, CellBelMapping.Builder mapping, EDIFCell topLevelCell, EDIFCell cell, Design design) {
         mapping.setCell(allStrings.getIndex(cell.getName()));
         EDIFCellInst cellInst = new EDIFCellInst("test", cell, topLevelCell);
         Cell physCell = design.createCell("test", cellInst);
@@ -741,34 +741,42 @@ public class EnumerateCellBelMapping {
             }
 
             for (List<String> parameters : getParametersFor(series, cell.getName())) {
+                HashSet<Map.Entry<String, String>> pinMapping = null;
+
                 for (Site site : siteMap.get(siteType)) {
-                    SiteInst siteInst = design.createSiteInst("test_site", siteType, site);
+                    if (pinMapping == null) {
+                        SiteInst siteInst = design.createSiteInst("test_site", siteType, site);
 
-                    String[] parameterArray = parameters.toArray(new String[parameters.size()]);
-                    physCell = design.createAndPlaceCell("test", Unisim.valueOf(cell.getName()), site.getName() + "/" + bel, parameterArray);
+                        String[] parameterArray = parameters.toArray(new String[parameters.size()]);
+                        physCell = design.createAndPlaceCell("test", Unisim.valueOf(cell.getName()),
+                                site.getName() + "/" + bel, parameterArray);
 
-                    // Build complete P2L map.
-                    Map<String, String> pinMap = new HashMap<String, String>();
+                        // Build complete P2L map.
+                        Map<String, String> pinMap = new HashMap<String, String>();
 
-                    for (Map.Entry<String, Set<String>> pinPair : physCell.getPinMappingsL2P().entrySet()) {
-                        for (String physPin : pinPair.getValue()) {
-                            pinMap.put(physPin, pinPair.getKey());
+                        for (Map.Entry<String, Set<String>> pinPair : physCell.getPinMappingsL2P().entrySet()) {
+                            for (String physPin : pinPair.getValue()) {
+                                pinMap.put(physPin, pinPair.getKey());
+                            }
                         }
+
+                        pinMap.putAll(physCell.getPinMappingsP2L());
+
+                        pinMapping = new HashSet<Map.Entry<String, String>>();
+                        for (Map.Entry<String, String> pinPair : pinMap.entrySet()) {
+                            pinMapping.add(
+                                    new AbstractMap.SimpleEntry<String, String>(pinPair.getValue(), pinPair.getKey()));
+                        }
+
+                        data.addInstance(siteType, site, bel, pinMapping, parameters);
+
+                        design.removeCell(physCell);
+                        design.removeSiteInst(siteInst);
+                        topLevelCell.removeCellInst("test");
+                        design.getTopEDIFCell().removeCellInst("test");
+                    } else {
+                        data.addInstance(siteType, site, bel, pinMapping, parameters);
                     }
-
-                    pinMap.putAll(physCell.getPinMappingsP2L());
-
-                    HashSet<Map.Entry<String, String>> pinMapping = new HashSet<Map.Entry<String, String>>();
-                    for (Map.Entry<String, String> pinPair : pinMap.entrySet()) {
-                        pinMapping.add(new AbstractMap.SimpleEntry<String, String>(pinPair.getValue(), pinPair.getKey()));
-                    }
-
-                    data.addInstance(siteType, site, bel, pinMapping, parameters);
-
-                    design.removeCell(physCell);
-                    design.removeSiteInst(siteInst);
-                    topLevelCell.removeCellInst("test");
-                    design.getTopEDIFCell().removeCellInst("test");
                 }
             }
         }
@@ -776,7 +784,7 @@ public class EnumerateCellBelMapping {
         data.writeMapping(allStrings, mapping);
     }
 
-    public static void populateAllPinMappings(String part, Device device, DeviceResources.Device.Builder devBuilder, Enumerator<String> allStrings) {
+    public static void populateAllPinMappings(String part, Device device, DeviceResources.Device.Builder devBuilder, StringEnumerator allStrings) {
         Design design = new Design("top", part);
 
         EDIFLibrary prims = Design.getPrimitivesLibrary(design.getDevice().getName());
@@ -832,7 +840,7 @@ public class EnumerateCellBelMapping {
         Device device = Device.getDevice(args[0]);
 
         t.stop().start("Enumerate cells in sites");
-        Enumerator<String> allStrings = new Enumerator<String>();
+        StringEnumerator allStrings = new StringEnumerator();
 
         MessageBuilder message = new MessageBuilder();
         DeviceResources.Device.Builder devBuilder = message.initRoot(DeviceResources.Device.factory);

@@ -37,6 +37,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -49,6 +51,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.xilinx.rapidwright.design.blocks.PBlock;
 import com.xilinx.rapidwright.design.blocks.UtilizationType;
 import com.xilinx.rapidwright.design.tools.LUTTools;
 import com.xilinx.rapidwright.device.BEL;
@@ -623,14 +626,25 @@ public class DesignTools {
         return sitePin;
     }
 
-    public static HashMap<UtilizationType,Integer> calculateUtilization(Design d) {
-        HashMap<UtilizationType,Integer> map = new HashMap<UtilizationType,Integer>();
+    public static Map<UtilizationType, Integer> calculateUtilization(Design d, PBlock pblock) {
+        Set<Site> sites = pblock.getAllSites(null);
+        List<SiteInst> siteInsts = d.getSiteInsts().stream().filter(s -> sites.contains(s.getSite()))
+                .collect(Collectors.toList());
+        return calculateUtilization(siteInsts);
+    }
+
+    public static Map<UtilizationType, Integer> calculateUtilization(Design d) {
+        return calculateUtilization(d.getSiteInsts());
+    }
+
+    public static Map<UtilizationType, Integer> calculateUtilization(Collection<SiteInst> siteInsts) {
+        Map<UtilizationType, Integer> map = new HashMap<UtilizationType, Integer>();
 
         for (UtilizationType ut : UtilizationType.values()) {
             map.put(ut, 0);
         }
 
-        for (SiteInst si : d.getSiteInsts()) {
+        for (SiteInst si : siteInsts) {
             SiteTypeEnum s = si.getSite().getSiteTypeEnum();
             if (Utils.isSLICE(si)) {
                 incrementUtilType(map, UtilizationType.CLBS);
@@ -679,9 +693,14 @@ public class DesignTools {
                 }
 
             }
-            for (String letter : Arrays.asList("A", "B", "C", "D", "E", "F", "G", "H")) {
+            for (char letter : LUTTools.lutLetters) {
                 Cell c5 = si.getCell(letter +"5LUT");
                 Cell c6 = si.getCell(letter +"6LUT");
+                if (c5 != null && c5.isRoutethru()) {
+                    c5 = null;
+                } else if (c6 != null && c6.isRoutethru()) {
+                    c6 = null;
+                }
                 if (c5 != null || c6 != null) {
                     incrementUtilType(map, UtilizationType.CLB_LUTS);
 
@@ -705,7 +724,7 @@ public class DesignTools {
         return false;
     }
 
-    private static void incrementUtilType(HashMap<UtilizationType,Integer> map, UtilizationType ut) {
+    private static void incrementUtilType(Map<UtilizationType, Integer> map, UtilizationType ut) {
         Integer val = map.get(ut);
         val++;
         map.put(ut, val);
@@ -1926,7 +1945,7 @@ public class DesignTools {
                     SitePIP sitePIP = inst.getUsedSitePIP(source.getBELName());
                     if (sitePIP == null) return null;
                     queue.add(sitePIP.getInputPin());
-                } else if (source.getBELName().contains("LUT") || source.getBELName().contains("MUX")) {
+                } else if (source.getBEL().isLUT() || source.getBEL().getBELType().endsWith("MUX")) {
                     Cell possibleRouteThru = inst.getCell(source.getBEL());
                     if (possibleRouteThru != null && possibleRouteThru.isRoutethru()) {
                         String routeThru = possibleRouteThru.getPinMappingsP2L().keySet().iterator().next();
@@ -2736,6 +2755,13 @@ public class DesignTools {
         }
     }
 
+    /**
+     * Make all of a Design's physical Net objects consistent with its logical (EDIF) netlist.
+     * Specifically, merge all sitewire and SitePinInst-s associated with physical Net-s that
+     * are not the parent/canonical logical net into the parent Net, and delete all
+     * non-parent Net-s.
+     * @param design Design object to be modified in-place.
+     */
     public static void makePhysNetNamesConsistent(Design design) {
         Map<EDIFHierNet, EDIFHierNet> netParentMap = design.getNetlist().getParentNetMap();
         EDIFNetlist netlist = design.getNetlist();
@@ -2764,7 +2790,7 @@ public class DesignTools {
                             si.routeIntraSiteNet(parentPhysNet, pins[0], pins[0]);
                         }
                     }
-                    design.removeNet(net);
+                    design.movePinsToNewNetDeleteOldNet(net, parentPhysNet, true);
                 } else if (!net.rename(parentHierNet.getHierarchicalNetName())) {
                     System.out.println("WARNING: Failed to adjust physical net name " + net.getName());
                 }
@@ -2844,36 +2870,57 @@ public class DesignTools {
         }
     }
 
+    /**
+     * Create and add any missing SitePinInst-s belonging to the VCC net.
+     * This is indicated by the sitewire corresponding to CE and SR pins of SLICE FFs,
+     * or to the RST pins on RAMBs, having no associated net.
+     * @param design Design object to be modified in-place.
+     */
     public static void createCeSrRstPinsToVCC(Design design) {
+        Series series = design.getDevice().getSeries();
+        if (series == Series.Series7) {
+            // Nothing to be done for Series7 which don't have inverters
+            return;
+        }
+        Net vcc = design.getVccNet();
+        Net gndInvertibleToVcc = null;
+        // On these series of devices, SR can be inverted from gnd to vcc
+        if (EnumSet.of(Series.UltraScale, Series.UltraScalePlus).contains(series)) {
+            gndInvertibleToVcc = design.getGndNet();
+        }
+        Map<String, Pair<String, String>> pinMapping = belTypeSitePinNameMapping.get(series);
         for (Cell cell : design.getCells()) {
             if (isUnisimFlipFlopType(cell.getType())) {
+                SiteInst si = cell.getSiteInst();
                 BEL bel = cell.getBEL();
-                Pair<String, String> sitePinNames = belSitePinNameMapping.get(bel.getBELType());
+                Pair<String, String> sitePinNames = pinMapping.get(bel.getBELType());
                 String[] pins = new String[] {"CE", "SR"};
                 for (String pin : pins) {
                     BELPin belPin = cell.getBEL().getPin(pin);
-                    SiteInst si = cell.getSiteInst();
                     Net net = si.getNetFromSiteWire(belPin.getSiteWireName());
-                    if (net == null) {
+                    if (net == null || (net == gndInvertibleToVcc && pin.equals("SR"))) {
                         String sitePinName;
                         if (pin.equals("CE")) { // CKEN
                             sitePinName = sitePinNames.getFirst();
                         } else { //SRST
                             sitePinName = sitePinNames.getSecond();
                         }
-                        net = design.getVccNet();
-                        if (!si.getSitePinInstNames().contains(sitePinName)) net.createPin(sitePinName, si);
+                        if (si.getSitePinInst(sitePinName) == null) {
+                            vcc.createPin(sitePinName, si);
+                        }
                     }
                 }
             } else if (cell.getType().equals("RAMB36E2") && cell.getAllPhysicalPinMappings("RSTREGB") == null) {
                 //cell.getEDIFCellInst().getProperty("DOB_REG")): integer(0)
+                SiteInst si = cell.getSiteInst();
                 String siteWire = cell.getSiteWireNameFromLogicalPin("RSTREGB");
-                Net net = cell.getSiteInst().getNetFromSiteWire(siteWire);
+                Net net = si.getNetFromSiteWire(siteWire);
                 if (net == null) {
-                    net = design.getVccNet();
-                    SiteInst si = cell.getSiteInst();
-                    if (!si.getSitePinInstNames().contains("RSTREGBU")) net.createPin("RSTREGBU", si);
-                    if (!si.getSitePinInstNames().contains("RSTREGBL")) net.createPin("RSTREGBL", si);
+                    for (String pinName : Arrays.asList("RSTREGBU", "RSTREGBL")) {
+                        if (si.getSitePinInst(pinName) == null) {
+                            vcc.createPin(pinName, si);
+                        }
+                    }
                 }
             } else if (cell.getType().equals("RAMB18E2") && cell.getAllPhysicalPinMappings("RSTREGB") == null) {
                 SiteInst si = cell.getSiteInst();
@@ -2888,15 +2935,14 @@ public class DesignTools {
                 String siteWire = cell.getBEL().getPin("RSTREGB").getSiteWireName();
                 Net net = si.getNetFromSiteWire(siteWire);
                 if (net == null) {
-                    net = design.getVccNet();
-                    String pinName = null;
+                    String pinName;
                     if (siteWire.endsWith("L_O")) {
                         pinName = "RSTREGBL";
                     } else {
                         pinName = "RSTREGBU";
                     }
-                    if (si.getSitePinInstNames().isEmpty() || !si.getSitePinInstNames().contains(pinName)) {
-                        net.createPin(pinName, si);
+                    if (si.getSitePinInst(pinName) == null) {
+                        vcc.createPin(pinName, si);
                     }
                 }
             }
@@ -2954,27 +3000,63 @@ public class DesignTools {
         return unisimFlipFlopTypes.contains(cellType);
     }
 
-    static Map<String, Pair<String, String>> belSitePinNameMapping;
+    static public final Map<Series, Map<String, Pair<String, String>>> belTypeSitePinNameMapping;
     static{
-        belSitePinNameMapping = new HashMap<>();
+        belTypeSitePinNameMapping = new EnumMap(Series.class);
+        Pair<String,String> p;
 
-        belSitePinNameMapping.put("AFF", new Pair<>("CKEN1", "SRST1"));
-        belSitePinNameMapping.put("BFF", new Pair<>("CKEN1", "SRST1"));
-        belSitePinNameMapping.put("CFF", new Pair<>("CKEN1", "SRST1"));
-        belSitePinNameMapping.put("DFF", new Pair<>("CKEN1", "SRST1"));
-        belSitePinNameMapping.put("AFF2", new Pair<>("CKEN2", "SRST1"));
-        belSitePinNameMapping.put("BFF2", new Pair<>("CKEN2", "SRST1"));
-        belSitePinNameMapping.put("CFF2", new Pair<>("CKEN2", "SRST1"));
-        belSitePinNameMapping.put("DFF2", new Pair<>("CKEN2", "SRST1"));
+        {
+            Map<String, Pair<String, String>> ultraScalePlus = new HashMap<>();
+            belTypeSitePinNameMapping.put(Series.UltraScalePlus, ultraScalePlus);
 
-        belSitePinNameMapping.put("EFF", new Pair<>("CKEN3", "SRST2"));
-        belSitePinNameMapping.put("FFF", new Pair<>("CKEN3", "SRST2"));
-        belSitePinNameMapping.put("GFF", new Pair<>("CKEN3", "SRST2"));
-        belSitePinNameMapping.put("HFF", new Pair<>("CKEN3", "SRST2"));
-        belSitePinNameMapping.put("EFF2", new Pair<>("CKEN4", "SRST2"));
-        belSitePinNameMapping.put("FFF2", new Pair<>("CKEN4", "SRST2"));
-        belSitePinNameMapping.put("GFF2", new Pair<>("CKEN4", "SRST2"));
-        belSitePinNameMapping.put("HFF2", new Pair<>("CKEN4", "SRST2"));
+            p = new Pair<>("CKEN1", "SRST1");
+            ultraScalePlus.put("AFF", p);
+            ultraScalePlus.put("BFF", p);
+            ultraScalePlus.put("CFF", p);
+            ultraScalePlus.put("DFF", p);
+            p = new Pair<>("CKEN2", "SRST1");
+            ultraScalePlus.put("AFF2", p);
+            ultraScalePlus.put("BFF2", p);
+            ultraScalePlus.put("CFF2", p);
+            ultraScalePlus.put("DFF2", p);
+
+            p = new Pair<>("CKEN3", "SRST2");
+            ultraScalePlus.put("EFF", p);
+            ultraScalePlus.put("FFF", p);
+            ultraScalePlus.put("GFF", p);
+            ultraScalePlus.put("HFF", p);
+            p = new Pair<>("CKEN4", "SRST2");
+            ultraScalePlus.put("EFF2", p);
+            ultraScalePlus.put("FFF2", p);
+            ultraScalePlus.put("GFF2", p);
+            ultraScalePlus.put("HFF2", p);
+        }
+        {
+            Map<String, Pair<String, String>> ultraScale = new HashMap<>();
+            belTypeSitePinNameMapping.put(Series.UltraScale, ultraScale);
+
+            p = new Pair<>("CKEN_B1", "SRST_B1");
+            ultraScale.put("AFF", p);
+            ultraScale.put("BFF", p);
+            ultraScale.put("CFF", p);
+            ultraScale.put("DFF", p);
+            p = new Pair<>("CKEN_B2", "SRST_B1");
+            ultraScale.put("AFF2", p);
+            ultraScale.put("BFF2", p);
+            ultraScale.put("CFF2", p);
+            ultraScale.put("DFF2", p);
+
+            p = new Pair<>("CKEN_B3", "SRST_B2");
+            ultraScale.put("EFF", p);
+            ultraScale.put("FFF", p);
+            ultraScale.put("GFF", p);
+            ultraScale.put("HFF", p);
+            p = new Pair<>("CKEN_B4", "SRST_B2");
+            ultraScale.put("EFF2", p);
+            ultraScale.put("FFF2", p);
+            ultraScale.put("GFF2", p);
+            ultraScale.put("HFF2", p);
+        }
     }
 
     /**

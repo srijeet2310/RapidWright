@@ -1,7 +1,7 @@
 /*
  *
  * Copyright (c) 2017-2022, Xilinx, Inc.
- * Copyright (c) 2022, Advanced Micro Devices, Inc.
+ * Copyright (c) 2022-2023, Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Author: Chris Lavin, Xilinx Research Labs.
@@ -21,9 +21,6 @@
  * limitations under the License.
  *
  */
-/**
- *
- */
 package com.xilinx.rapidwright.edif;
 
 import java.io.IOException;
@@ -32,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 
 /**
  * Represents the EDIF property value construct.  Currently supports:
@@ -269,5 +267,28 @@ public class EDIFPropertyValue {
 
     public void setOwner(String owner) {
         this.owner = owner;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj)
+            return true;
+        if (obj == null)
+            return false;
+        if (getClass() != obj.getClass())
+            return false;
+        EDIFPropertyValue other = (EDIFPropertyValue) obj;
+        if (!type.equals(other.type))
+            return false;
+        if (!value.equals(other.value))
+            return false;
+        if (owner != other.owner)
+            return false;
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(type, value, owner);
     }
 }
