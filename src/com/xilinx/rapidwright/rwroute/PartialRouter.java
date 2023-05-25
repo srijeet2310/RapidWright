@@ -331,11 +331,12 @@ public class PartialRouter extends RWRoute {
         if (!clk.hasPIPs()) {
             super.addGlobalClkRoutingTargets(clk);
         } else {
+            preserveNet(clk, true);
+            numPreservedClks++;
+
             List<SitePinInst> clkPins = netToPins.get(clk);
-            if (clkPins == null || clkPins.isEmpty()) {
+            if (clkPins != null && !clkPins.isEmpty()) {
                 clkNets.add(clk);
-                preserveNet(clk, true);
-                numPreservedClks++;
                 numPreservedRoutableNets++;
             } else {
                 numNotNeedingRoutingNets++;
