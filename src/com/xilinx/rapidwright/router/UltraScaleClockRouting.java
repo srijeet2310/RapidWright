@@ -627,7 +627,7 @@ public class UltraScaleClockRouting {
 
         UltraScaleClockRouting.routeToLCBs(clkNet, startingPoints, lcbMappings.keySet());
         // Last mile routing from LCBs to SLICEs
-        UltraScaleClockRouting.routeLCBsToSinks(clkNet, lcbMappings);
+        UltraScaleClockRouting.routeLCBsToSinks(clkNet, lcbMappings, isNodeUnavailable);
 
         // Remove duplicates
         Set<PIP> uniquePIPs = new HashSet<>();

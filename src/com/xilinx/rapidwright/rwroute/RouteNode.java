@@ -206,10 +206,6 @@ abstract public class RouteNode implements Comparable<RouteNode> {
                     case NODE_VLONG:
                         baseCost = 0.7f;
                         break;
-                    case NODE_LAGUNA_DATA:
-                        // US+: U-turn SLL at the boundary of the device
-                        assert(length == 0);
-                        break;
                     default:
                         throw new RuntimeException(ic.toString());
                 }

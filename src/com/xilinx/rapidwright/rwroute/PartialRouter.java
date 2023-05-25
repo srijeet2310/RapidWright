@@ -344,22 +344,6 @@ public class PartialRouter extends RWRoute {
     }
 
     @Override
-    protected void routeGlobalClkNets() {
-        if (clkNets.size() > 0) System.out.println("INFO: Route clock nets");
-
-        for (Net clk : clkNets) {
-            List<SitePinInst> clkPins = netToPins.get(clk);
-            UltraScaleClockRouting.incrementalClockRouter(clk, clkPins,
-                    // Predicate to determine whether a node is unavailable for global routing
-                    (node) -> {
-                        Net preservedNet = routingGraph.getPreservedNet(node);
-                        return preservedNet != null /*&& preservedNet != clk*/;
-                    });
-            preserveNet(clk, false);
-        }
-    }
-
-    @Override
     protected void addStaticNetRoutingTargets(Net staticNet) {
         if (staticNet.hasPIPs()) {
             preserveNet(staticNet, true);
