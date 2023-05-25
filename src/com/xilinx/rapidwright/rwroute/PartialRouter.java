@@ -328,32 +328,31 @@ public class PartialRouter extends RWRoute {
 
     @Override
     protected void addGlobalClkRoutingTargets(Net clk) {
-        List<SitePinInst> clkPins = netToPins.get(clk);
-        if (clkPins == null || clkPins.isEmpty()) {
-            if (clk.hasPIPs()) {
+        if (!clk.hasPIPs()) {
+            super.addGlobalClkRoutingTargets(clk);
+        } else {
+            List<SitePinInst> clkPins = netToPins.get(clk);
+            if (clkPins == null || clkPins.isEmpty()) {
+                clkNets.add(clk);
                 preserveNet(clk, true);
-                numPreservedStaticNets++;
+                numPreservedClks++;
                 numPreservedRoutableNets++;
             } else {
                 numNotNeedingRoutingNets++;
             }
-            return;
         }
-
-        clkNets.add(clk);
     }
 
     @Override
     protected void addStaticNetRoutingTargets(Net staticNet) {
         if (staticNet.hasPIPs()) {
             preserveNet(staticNet, true);
+            numPreservedStaticNets++;
         }
 
         List<SitePinInst> staticPins = netToPins.get(staticNet);
         if (staticPins == null || staticPins.isEmpty()) {
             if (staticNet.hasPIPs()) {
-                preserveNet(staticNet, true);
-                numPreservedStaticNets++;
                 numPreservedRoutableNets++;
             } else {
                 numNotNeedingRoutingNets++;
