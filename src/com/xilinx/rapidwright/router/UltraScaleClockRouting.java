@@ -538,8 +538,9 @@ public class UltraScaleClockRouting {
         // Find all horizontal distribution lines to be used as starting points and create a map
         // lookup by clock region
         Map<ClockRegion,Set<RouteNode>> startingPoints = new HashMap<>();
-        RouteNode vrouteDown = null;
-        Set<Node> vroutes = new HashSet<>();
+        Set<Node> vroutesUp = new HashSet<>();
+        Set<Node> vroutesDown = new HashSet<>();
+        int centroidY = -1;
         for (PIP p : clkNet.getPIPs()) {
             Node startNode = p.getStartNode();
             Node endNode = p.getEndNode();
@@ -552,39 +553,64 @@ public class UltraScaleClockRouting {
                         Set<RouteNode> crNodes = startingPoints.computeIfAbsent(w.getTile().getClockRegion(), n -> new HashSet<>());
                         crNodes.add(rn);
                     }
-                } else if (ic == IntentCode.NODE_GLOBAL_VDISTR) {
-                    vroutes.add(node);
-                } else if (node == startNode &&
-                        endNode.getIntentCode() == IntentCode.NODE_GLOBAL_VDISTR &&
-                        (ic == IntentCode.NODE_GLOBAL_VROUTE || ic == IntentCode.NODE_GLOBAL_HROUTE)) {
-                    assert(vrouteDown == null);
-                    vrouteDown = new RouteNode(endNode.getTile(), endNode.getWire());
+                } else if (node == startNode && endNode.getIntentCode() == IntentCode.NODE_GLOBAL_VDISTR) {
+                    if (ic == IntentCode.NODE_GLOBAL_VROUTE || ic == IntentCode.NODE_GLOBAL_HROUTE) {
+                        // Centroid lays where {HROUTE, VROUTE} -> VDISTR
+                        assert(centroidY == -1);
+                        centroidY = p.getTile().getTileYCoordinate();
+                    } else {
+                        Tile startTile = startNode.getTile();
+                        Tile endTile = endNode.getTile();
+                        if (endTile == startTile) {
+                            for (Wire w : endNode.getAllWiresInNode()) {
+                                if (w.getTile() != endTile) {
+                                    endTile = w.getTile();
+                                    break;
+                                }
+                            }
+                        }
+
+                        int startTileY = startTile.getTileYCoordinate();
+                        int endTileY = endTile.getTileYCoordinate();
+                        if (endTileY > startTileY) {
+                            vroutesUp.add(endNode);
+                        } else if (endTileY < startTileY) {
+                            vroutesDown.add(endNode);
+                        }
+                    }
                 }
             }
         }
+        assert(centroidY != -1);
 
-        final int centroidY = vrouteDown.getTile().getTileYCoordinate();
-        Node vrouteUpNode = null;
-        int vrouteUpDeltaY = Integer.MAX_VALUE;
-        for (Node node : vroutes) {
-            int y = node.getTile().getTileYCoordinate();
-            int deltaY = y - centroidY;
-            if (deltaY <= 0) {
-                continue;
-            }
-            if (vrouteUpNode == null || deltaY < vrouteUpDeltaY) {
-                vrouteUpNode = node;
-                vrouteUpDeltaY = deltaY;
+        Node currNode = null;
+        int currDelta = Integer.MAX_VALUE;
+        for (Node node : vroutesUp) {
+            int delta = node.getTile().getTileYCoordinate() - centroidY;
+            assert(delta >= 0);
+            if (delta < currDelta) {
+                currDelta = delta;
+                currNode = node;
             }
         }
-        RouteNode vrouteUp = null;
-        if (vrouteUpNode != null) {
-            vrouteUp = new RouteNode(vrouteUpNode.getTile(), vrouteUpNode.getWire());
+        RouteNode vrouteUp = currNode != null ? new RouteNode(currNode.getTile(), currNode.getWire()) : null;
+
+        currNode = null;
+        currDelta = Integer.MAX_VALUE;
+        for (Node node : vroutesDown) {
+            int delta = centroidY - node.getTile().getTileYCoordinate();
+            assert(delta >= 0);
+            if (delta < currDelta) {
+                currDelta = delta;
+                currNode = node;
+            }
         }
+        RouteNode vrouteDown = currNode != null ? new RouteNode(currNode.getTile(), currNode.getWire()) : null;
 
         // Find the target leaf clock buffers (LCBs), route from horizontal dist lines to those
         Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = GlobalSignalRouting.getLCBPinMappings(clkPins, isNodeUnavailable);
 
+        final int finalCentroidY = centroidY;
         Set<ClockRegion> newUpClockRegions = new HashSet<>();
         Set<ClockRegion> newDownClockRegions = new HashSet<>();
         for (Iterator<Map.Entry<RouteNode, ArrayList<SitePinInst>>> it = lcbMappings.entrySet().iterator(); it.hasNext(); ) {
@@ -592,7 +618,7 @@ public class UltraScaleClockRouting {
             RouteNode lcb = e.getKey();
             ClockRegion currCR = lcb.getTile().getClockRegion();
             startingPoints.computeIfAbsent(currCR, n -> {
-                if (currCR.getUpperLeft().getTileYCoordinate() > centroidY) {
+                if (currCR.getUpperLeft().getTileYCoordinate() > finalCentroidY) {
                     newUpClockRegions.add(currCR);
                 } else {
                     newDownClockRegions.add(currCR);
