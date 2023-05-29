@@ -448,10 +448,10 @@ public class UltraScaleClockRouting {
                         for (PIP pip : curr.getPIPsBackToSource()) {
                             currPIPs.add(pip);
                             NodeStatus status = getNodeStatus.apply(pip.getStartNode());
-                            // if (status == NodeStatus.INUSE) {
-                            //     break;
-                            // }
-                            // assert(status == NodeStatus.AVAILABLE);
+                            if (status == NodeStatus.INUSE) {
+                                break;
+                            }
+                            assert(status == NodeStatus.AVAILABLE);
                         }
                         sink.setRouted(true);
                         visited.clear();
