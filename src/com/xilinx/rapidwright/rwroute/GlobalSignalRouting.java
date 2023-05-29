@@ -279,7 +279,7 @@ public class GlobalSignalRouting {
                         continue;
                     }
 
-                    NodeStatus prevPrevNodeStatus = getNodeStatus.apply(prev);
+                    NodeStatus prevPrevNodeStatus = getNodeStatus.apply(prevPrev);
                     if (prevPrevNodeStatus == NodeStatus.UNAVAILABLE) {
                         continue;
                     }
@@ -290,6 +290,7 @@ public class GlobalSignalRouting {
                         break outer;
                     }
 
+                    assert(prevPrevNodeStatus == NodeStatus.AVAILABLE);
                     lcbCandidates.add(prevPrev);
                 }
             }
