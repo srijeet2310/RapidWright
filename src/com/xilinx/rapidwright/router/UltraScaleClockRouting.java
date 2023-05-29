@@ -627,13 +627,12 @@ public class UltraScaleClockRouting {
         Predicate<Node> isNodeUnavailable = (node) -> getNodeStatus.apply(node) == NodeStatus.UNAVAILABLE;
 
         // Find the target leaf clock buffers (LCBs), route from horizontal dist lines to those
-        Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = GlobalSignalRouting.getLCBPinMappings(clkPins, isNodeUnavailable);
+        Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = GlobalSignalRouting.getLCBPinMappings(clkPins, getNodeStatus);
 
         final int finalCentroidY = centroidY;
         Set<ClockRegion> newUpClockRegions = new HashSet<>();
         Set<ClockRegion> newDownClockRegions = new HashSet<>();
-        for (Iterator<Map.Entry<RouteNode, ArrayList<SitePinInst>>> it = lcbMappings.entrySet().iterator(); it.hasNext(); ) {
-            Map.Entry<RouteNode, ArrayList<SitePinInst>> e = it.next();
+        for (Map.Entry<RouteNode, ArrayList<SitePinInst>> e : lcbMappings.entrySet()) {
             RouteNode lcb = e.getKey();
             ClockRegion currCR = lcb.getTile().getClockRegion();
             startingPoints.computeIfAbsent(currCR, n -> {

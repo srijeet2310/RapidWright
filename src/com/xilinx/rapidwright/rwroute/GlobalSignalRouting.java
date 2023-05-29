@@ -246,7 +246,7 @@ public class GlobalSignalRouting {
      * @return A map between leaf clock buffer nodes and sink SitePinInsts.
      */
     public static Map<RouteNode, ArrayList<SitePinInst>> getLCBPinMappings(Net clk) {
-        return getLCBPinMappings(clk.getPins(), (n) -> false);
+        return getLCBPinMappings(clk.getPins(), (n) -> NodeStatus.AVAILABLE);
     }
 
     /**
@@ -255,27 +255,53 @@ public class GlobalSignalRouting {
      * @return A map between leaf clock buffer nodes and sink SitePinInsts.
      */
     public static Map<RouteNode, ArrayList<SitePinInst>> getLCBPinMappings(List<SitePinInst> clkPins,
-                                                                           Predicate<Node> isNodeUnavailable) {
+                                                                           Function<Node,NodeStatus> getNodeStatus) {
         Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = new HashMap<>();
+        List<Node> lcbCandidates = new ArrayList<>();
+        Set<Node> usedLcbs = new HashSet<>();
         for (SitePinInst p : clkPins) {
             if (p.isOutPin()) continue;
-            Node n = null;// n should be a node whose name ends with "CLK_LEAF"
+            assert(lcbCandidates.isEmpty());
+            Tile intTile = p.getSite().getIntTile();
+
             outer: for (Node prev : p.getConnectedNode().getAllUphillNodes()) {
-                if (!prev.getTile().equals(p.getSite().getIntTile()) || isNodeUnavailable.test(prev)) {
+                if (!prev.getTile().equals(intTile)) {
                     continue;
                 }
+
+                NodeStatus prevNodeStatus = getNodeStatus.apply(prev);
+                if (prevNodeStatus == NodeStatus.UNAVAILABLE) {
+                    continue;
+                }
+
                 for (Node prevPrev : prev.getAllUphillNodes()) {
-                    if (prevPrev.getIntentCode() != IntentCode.NODE_GLOBAL_LEAF || isNodeUnavailable.test(prevPrev)) {
+                    if (prevPrev.getIntentCode() != IntentCode.NODE_GLOBAL_LEAF) {
                         continue;
                     }
-                    n = prevPrev;
-                    break outer;
+
+                    NodeStatus prevPrevNodeStatus = getNodeStatus.apply(prev);
+                    if (prevPrevNodeStatus == NodeStatus.UNAVAILABLE) {
+                        continue;
+                    }
+
+                    if (!usedLcbs.add(prevPrev) || prevPrevNodeStatus == NodeStatus.INUSE) {
+                        lcbCandidates.clear();
+                        lcbCandidates.add(prevPrev);
+                        break outer;
+                    }
+
+                    lcbCandidates.add(prevPrev);
                 }
             }
 
-            if (n == null) throw new RuntimeException("ERROR: No mapped LCB to SitePinInst " + p);
+            if (lcbCandidates.isEmpty()) {
+                throw new RuntimeException("ERROR: No mapped LCB to SitePinInst " + p);
+            }
+            Node n = lcbCandidates.get(0);
             RouteNode rn = new RouteNode(n.getTile(), n.getWire());
             lcbMappings.computeIfAbsent(rn, (k) -> new ArrayList<>()).add(p);
+            usedLcbs.add(n);
+            lcbCandidates.clear();
         }
 
         return lcbMappings;
