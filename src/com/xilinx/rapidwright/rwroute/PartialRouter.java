@@ -189,16 +189,28 @@ public class PartialRouter extends RWRoute {
         return numCrossingSLRs;
     }
 
+    // Determines whether a node is (a) available for use,
+    // (b) already in used by this net, (c) unavailable
+    @Override
+    protected NodeStatus getNodeStatus(Net net, Node node) {
+        Net preservedNet = routingGraph.getPreservedNet(node);
+        if (preservedNet != null) {
+            // Unavailable only if it isn't carrying the net undergoing routing
+            return preservedNet == net ? NodeStatus.INUSE
+                                       : NodeStatus.UNAVAILABLE;
+        }
+        // A RouteNode will only be created if the net is necessary for
+        // a to-be-routed connection
+        return routingGraph.getNode(node) == null ? NodeStatus.AVAILABLE
+                                                  : NodeStatus.UNAVAILABLE;
+    }
+
     @Override
     protected void routeGlobalClkNets() {
         if (clkNets.isEmpty())
             return;
 
-        // In softPreserve mode, allow the clock router to all nets -- including those already
-        // preserved by another net
-        Predicate<Node> isPreservedNode = softPreserve ? (node) -> false
-                                                       : routingGraph::isPreserved;
-        routeGlobalClkNets(isPreservedNode);
+        routeGlobalClkNets();
 
         if (softPreserve) {
             // Even though routeGlobalClkNets() has called preserveNet() for all clkNets,

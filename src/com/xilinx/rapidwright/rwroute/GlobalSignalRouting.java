@@ -76,12 +76,13 @@ public class GlobalSignalRouting {
      * @param routesToSinkINTTiles A map storing routes from CLK_OUT to different INT tiles that
      * connect to sink pins of a global clock net.
      * @param device The target device needed to get routing path representation with nodes from names.
-     * @param isPreservedNode Predicate lambda for indicating whether a Node is preserved and cannot be used.
+     * @param getNodeStatus Lambda for indicating the status of a Node: available, in-use (preserved
+     *                      for same net as we're routing), or unavailable (preserved for other net).
      */
     public static void routeClkWithPartialRoutes(Net clk,
                                                  Map<String, List<String>> routesToSinkINTTiles,
                                                  Device device,
-                                                 Predicate<Node> isPreservedNode) {
+                                                 Function<Node, NodeStatus> getNodeStatus) {
         Map<String, List<Node>> dstINTtilePaths = getListOfNodesFromRoutes(device, routesToSinkINTTiles);
         // Not import path after HDSTR
         Set<PIP> clkPIPs = new HashSet<>();
@@ -101,7 +102,7 @@ public class GlobalSignalRouting {
         UltraScaleClockRouting.routeToLCBs(clk, getStartingPoint(horDistributionLines, device), lcbMappings.keySet());
 
         // route LCBs to sink pins
-        UltraScaleClockRouting.routeLCBsToSinks(clk, lcbMappings, isPreservedNode);
+        UltraScaleClockRouting.routeLCBsToSinks(clk, lcbMappings, getNodeStatus);
 
         Set<PIP> clkPIPsWithoutDuplication = new HashSet<>(clk.getPIPs());
         clk.setPIPs(clkPIPsWithoutDuplication);
@@ -173,7 +174,7 @@ public class GlobalSignalRouting {
      * @param device The design device.
      * @param isPreservedNode Predicate lambda for indicating whether a Node is preserved and cannot be used.
      */
-    public static void symmetricClkRouting(Net clk, Device device, Predicate<Node> isPreservedNode) {
+    public static void symmetricClkRouting(Net clk, Device device, Function<Node,NodeStatus> isPreservedNode) {
         List<ClockRegion> clockRegions = getClockRegionsOfNet(clk);
         ClockRegion centroid = findCentroid(clk, device);
 
@@ -390,12 +391,13 @@ public class GlobalSignalRouting {
     /**
      * Checks if a {@link LightweightRouteNode} instance that represents a {@link Node} object should be pruned.
      * @param routingNode The RoutingNode in question.
-     * @param isNodeUnavailable A Predicate lambda to check if node is unavailable for use.
+     * @param getNodeStatus Lambda for indicating the status of a Node: available, in-use (preserved
+     *                      for same net as we're routing), or unavailable (preserved for other net).
      * @param visitedRoutingNodes RoutingNode instances that have been visited.
      * @return true, if the RoutingNode instance should not be considered as an available resource.
      */
     private static boolean pruneNode(LightweightRouteNode routingNode,
-                                     Function<Node,NodeStatus> isNodeUnavailable,
+                                     Function<Node,NodeStatus> getNodeStatus,
                                      Set<LightweightRouteNode> visitedRoutingNodes,
                                      Set<LightweightRouteNode> usedRoutingNodes) {
         Node node = routingNode.getNode();
@@ -412,7 +414,7 @@ public class GlobalSignalRouting {
                 return true;
             default:
         }
-        NodeStatus status = isNodeUnavailable.apply(node);
+        NodeStatus status = getNodeStatus.apply(node);
         if (status == NodeStatus.UNAVAILABLE) {
             return true;
         }

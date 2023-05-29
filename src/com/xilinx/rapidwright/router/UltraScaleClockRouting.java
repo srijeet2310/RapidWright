@@ -37,6 +37,7 @@ import com.xilinx.rapidwright.device.SiteTypeEnum;
 import com.xilinx.rapidwright.device.Tile;
 import com.xilinx.rapidwright.device.Wire;
 import com.xilinx.rapidwright.rwroute.GlobalSignalRouting;
+import com.xilinx.rapidwright.rwroute.NodeStatus;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -52,6 +53,7 @@ import java.util.Map.Entry;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -421,12 +423,16 @@ public class UltraScaleClockRouting {
     /**
      * @param clk
      * @param lcbMappings
-     * @param isPreservedNode Predicate lambda for indicating whether a Node is preserved and cannot be used.
+     * @param getNodeStatus Lambda for indicating the status of a Node: available, in-use (preserved
+     *                      for same net as we're routing), or unavailable (preserved for other net).
      */
-    public static void routeLCBsToSinks(Net clk, Map<RouteNode, ArrayList<SitePinInst>> lcbMappings, Predicate<Node> isPreservedNode) {
+    public static void routeLCBsToSinks(Net clk, Map<RouteNode, ArrayList<SitePinInst>> lcbMappings,
+                                        Function<Node, NodeStatus> getNodeStatus) {
         Set<Wire> used = new HashSet<>();
         Set<Wire> visited = new HashSet<>();
         Queue<RouteNode> q = new LinkedList<>();
+
+        Predicate<Node> isNodeUnavailable = (node) -> getNodeStatus.apply(node) == NodeStatus.UNAVAILABLE;
 
         for (Entry<RouteNode,ArrayList<SitePinInst>> e : lcbMappings.entrySet()) {
             Set<PIP> currPIPs = new HashSet<>();
@@ -439,8 +445,14 @@ public class UltraScaleClockRouting {
                 while (!q.isEmpty()) {
                     RouteNode curr = q.poll();
                     if (target.equals(curr)) {
-                        List<PIP> pips = curr.getPIPsBackToSource();
-                        currPIPs.addAll(pips);
+                        for (PIP pip : curr.getPIPsBackToSource()) {
+                            currPIPs.add(pip);
+                            NodeStatus status = getNodeStatus.apply(pip.getStartNode());
+                            if (status == NodeStatus.INUSE) {
+                                break;
+                            }
+                            assert(status == NodeStatus.AVAILABLE);
+                        }
                         sink.setRouted(true);
                         visited.clear();
                         continue nextPin;
@@ -449,7 +461,7 @@ public class UltraScaleClockRouting {
                         if (!visited.add(w)) continue;
                         if (used.contains(w)) continue;
                         if (w.isRouteThru()) continue;
-                        if (isPreservedNode.test(w.getNode())) continue;
+                        if (isNodeUnavailable.test(w.getNode())) continue;
                         q.add(new RouteNode(w.getTile(), w.getWireIndex(), curr, curr.getLevel()+1));
                     }
                 }
@@ -513,10 +525,12 @@ public class UltraScaleClockRouting {
      * yet routed.
      * @param design  The current design
      * @param clkNet The partially routed clock net to make fully routed
+     * @param getNodeStatus Lambda for indicating the status of a Node: available, in-use (preserved
+     *                      for same net as we're routing), or unavailable (preserved for other net).
      */
     public static void incrementalClockRouter(Design design,
                                               Net clkNet,
-                                              Predicate<Node> isNodeUnavailable) {
+                                              Function<Node,NodeStatus> getNodeStatus) {
         // Assume all existing site pins are already routed
         Set<SitePinInst> existingPins = new HashSet<>(clkNet.getSinkPins());
 
@@ -529,12 +543,12 @@ public class UltraScaleClockRouting {
         if (createdPins.isEmpty())
             return;
 
-        incrementalClockRouter(clkNet, createdPins, isNodeUnavailable);
+        incrementalClockRouter(clkNet, createdPins, getNodeStatus);
     }
 
     public static void incrementalClockRouter(Net clkNet,
                                               List<SitePinInst> clkPins,
-                                              Predicate<Node> isNodeUnavailable) {
+                                              Function<Node,NodeStatus> getNodeStatus) {
         // Find all horizontal distribution lines to be used as starting points and create a map
         // lookup by clock region
         Map<ClockRegion,Set<RouteNode>> startingPoints = new HashMap<>();
@@ -607,6 +621,8 @@ public class UltraScaleClockRouting {
         }
         RouteNode vrouteDown = currNode != null ? new RouteNode(currNode.getTile(), currNode.getWire()) : null;
 
+        Predicate<Node> isNodeUnavailable = (node) -> getNodeStatus.apply(node) == NodeStatus.UNAVAILABLE;
+
         // Find the target leaf clock buffers (LCBs), route from horizontal dist lines to those
         Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = GlobalSignalRouting.getLCBPinMappings(clkPins, isNodeUnavailable);
 
@@ -652,8 +668,9 @@ public class UltraScaleClockRouting {
         }
 
         UltraScaleClockRouting.routeToLCBs(clkNet, startingPoints, lcbMappings.keySet());
+
         // Last mile routing from LCBs to SLICEs
-        UltraScaleClockRouting.routeLCBsToSinks(clkNet, lcbMappings, isNodeUnavailable);
+        UltraScaleClockRouting.routeLCBsToSinks(clkNet, lcbMappings, getNodeStatus);
 
         // Remove duplicates
         Set<PIP> uniquePIPs = new HashSet<>();
