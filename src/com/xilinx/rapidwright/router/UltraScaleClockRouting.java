@@ -491,7 +491,7 @@ public class UltraScaleClockRouting {
      * @param clk The clock net to be routed.
      * @param vroute The node to start the route.
      * @param clockRegions Target clock regions.
-     * @param down To indicate if is is routing to the group of top clock regions.
+     * @param down To indicate if is routing to the group of top clock regions.
      * @return A list of RouteNodes indicating the reached horizontal distribution lines.
      */
     public static List<RouteNode> routeToHorizontalDistributionLines(Net clk,
@@ -564,8 +564,11 @@ public class UltraScaleClockRouting {
                 if (ic == IntentCode.NODE_GLOBAL_HDISTR) {
                     for (Wire w : node.getAllWiresInNode()) {
                         RouteNode rn = new RouteNode(w.getTile(), w.getWireIndex());
-                        Set<RouteNode> crNodes = startingPoints.computeIfAbsent(w.getTile().getClockRegion(), n -> new HashSet<>());
-                        crNodes.add(rn);
+                        ClockRegion cr = w.getTile().getClockRegion();
+                        if (cr != null) {
+                            startingPoints.computeIfAbsent(cr, n -> new HashSet<>())
+                                    .add(rn);
+                        }
                     }
                 } else if (node == startNode && endNode.getIntentCode() == IntentCode.NODE_GLOBAL_VDISTR) {
                     if (ic == IntentCode.NODE_GLOBAL_VROUTE || ic == IntentCode.NODE_GLOBAL_HROUTE) {
