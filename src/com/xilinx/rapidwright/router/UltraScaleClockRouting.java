@@ -225,7 +225,7 @@ public class UltraScaleClockRouting {
             return centroidRouteLine;
         }
         ClockRegion currCR = centroidRouteLine.getTile().getClockRegion();
-        return transitionCentroidToDistributoinLine(clk, centroidRouteLine, currCR);
+        return transitionCentroidToDistributionLine(clk, centroidRouteLine, currCR);
     }
 
     public static RouteNode transitionCentroidToVerticalDistributionLine(Net clk, RouteNode centroidRouteLine, boolean down) {
@@ -236,10 +236,10 @@ public class UltraScaleClockRouting {
 
         ClockRegion currCR = centroidRouteLine.getTile().getClockRegion();
         if (down) currCR = currCR.getNeighborClockRegion(-1, 0);
-        return transitionCentroidToDistributoinLine(clk, centroidRouteLine, currCR);
+        return transitionCentroidToDistributionLine(clk, centroidRouteLine, currCR);
     }
 
-    public static RouteNode transitionCentroidToDistributoinLine(Net clk, RouteNode centroidRouteLine, ClockRegion cr) {
+    public static RouteNode transitionCentroidToDistributionLine(Net clk, RouteNode centroidRouteLine, ClockRegion cr) {
         Queue<RouteNode> q = new LinkedList<RouteNode>();
         q.add(centroidRouteLine);
         ClockRegion currCR = cr;
