@@ -45,7 +45,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -478,27 +477,18 @@ public class UltraScaleClockRouting {
         }
     }
 
-    public static List<RouteNode> routeToHorizontalDistributionLines(Net clk,
-                                                                     RouteNode vroute,
-                                                                     Collection<ClockRegion> clockRegions,
-                                                                     boolean down)
-    {
-        return routeToHorizontalDistributionLines(clk, vroute, clockRegions, down, (node) -> false);
-    }
-
     /**
      * Routes from a GLOBAL_VERTICAL_ROUTE to horizontal distribution lines.
      * @param clk The clock net to be routed.
      * @param vroute The node to start the route.
      * @param clockRegions Target clock regions.
-     * @param down To indicate if is routing to the group of top clock regions.
+     * @param down To indicate if it is routing to the group of top clock regions.
      * @return A list of RouteNodes indicating the reached horizontal distribution lines.
      */
     public static List<RouteNode> routeToHorizontalDistributionLines(Net clk,
                                                                      RouteNode vroute,
                                                                      Collection<ClockRegion> clockRegions,
-                                                                     boolean down,
-                                                                     Predicate<Node> isNodeUnavailable) {
+                                                                     boolean down) {
         boolean verbose = false;
         RouteNode centroidDistNode = UltraScaleClockRouting.transitionCentroidToVerticalDistributionLine(clk, vroute, down);
         if (verbose) System.out.println(" transition distribution node is \n \t = " + centroidDistNode);
@@ -624,8 +614,6 @@ public class UltraScaleClockRouting {
         }
         RouteNode vrouteDown = currNode != null ? new RouteNode(currNode.getTile(), currNode.getWire()) : null;
 
-        Predicate<Node> isNodeUnavailable = (node) -> getNodeStatus.apply(node) == NodeStatus.UNAVAILABLE;
-
         // Find the target leaf clock buffers (LCBs), route from horizontal dist lines to those
         Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = GlobalSignalRouting.getLCBPinMappings(clkPins, getNodeStatus);
 
@@ -648,8 +636,7 @@ public class UltraScaleClockRouting {
             List<RouteNode> upLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clkNet,
                     vrouteUp,
                     newUpClockRegions,
-                    false,
-                    isNodeUnavailable);
+                    false);
             if (upLines != null) {
                 for (RouteNode rnode : upLines) {
                     startingPoints.get(rnode.getTile().getClockRegion()).add(rnode);
@@ -660,8 +647,7 @@ public class UltraScaleClockRouting {
             List<RouteNode> downLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clkNet,
                     vrouteDown,
                     newDownClockRegions,
-                    true,
-                    isNodeUnavailable);
+                    true);
             if (downLines != null) {
                 for (RouteNode rnode : downLines) {
                     startingPoints.get(rnode.getTile().getClockRegion()).add(rnode);
