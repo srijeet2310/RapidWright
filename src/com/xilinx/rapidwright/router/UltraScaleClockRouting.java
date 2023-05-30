@@ -281,6 +281,7 @@ public class UltraScaleClockRouting {
         Set<PIP> allPIPs = new HashSet<>();
         Set<RouteNode> startingPoints = new HashSet<>();
         startingPoints.add(centroidDistNode);
+        assert(centroidDistNode.getParent() == null);
         nextClockRegion: for (ClockRegion cr : clockRegions) {
             q.clear();
             visited.clear();
@@ -293,13 +294,14 @@ public class UltraScaleClockRouting {
                 ClockRegion currCR = curr.getTile().getClockRegion();
                 if (currCR != null && cr.getRow() == currCR.getRow() && c == IntentCode.NODE_GLOBAL_VDISTR) {
                     if (getNodeStatus.apply(Node.getNode(curr.getTile(), curr.getWire())) == NodeStatus.INUSE) {
+                        curr.setParent(null);
                         startingPoints.add(curr);
                     } else {
                         List<PIP> pips = curr.getPIPsBackToSource();
                         allPIPs.addAll(pips);
                         for (PIP p : pips) {
-                            startingPoints.add(new RouteNode(p.getTile(), p.getStartWireIndex()));
-                            startingPoints.add(new RouteNode(p.getTile(), p.getEndWireIndex()));
+                            startingPoints.add(p.getStartRouteNode());
+                            startingPoints.add(p.getEndRouteNode());
                         }
                     }
                     crToVdist.put(cr, curr);
@@ -337,7 +339,9 @@ public class UltraScaleClockRouting {
         Set<PIP> allPIPs = new HashSet<>();
         nextClockRegion: for (Entry<ClockRegion,RouteNode> e : crMap.entrySet()) {
             q.clear();
-            q.add(e.getValue());
+            RouteNode vertDistLine = e.getValue();
+            assert(vertDistLine.getParent() == null);
+            q.add(vertDistLine);
             while (!q.isEmpty()) {
                 RouteNode curr = q.poll();
                 IntentCode c = curr.getIntentCode();
@@ -399,7 +403,11 @@ public class UltraScaleClockRouting {
             q.clear();
             visited.clear();
             ClockRegion currCR = lcb.getTile().getClockRegion();
-            q.addAll(startingPoints.getOrDefault(currCR, Collections.emptySet()));
+            Set<RouteNode> starts = startingPoints.getOrDefault(currCR, Collections.emptySet());
+            for (RouteNode rn : starts) {
+                assert(rn.getParent() == null);
+            }
+            q.addAll(starts);
             while (!q.isEmpty()) {
                 RouteNode curr = q.poll();
                 visited.add(curr);
@@ -451,11 +459,13 @@ public class UltraScaleClockRouting {
 
         for (Entry<RouteNode,ArrayList<SitePinInst>> e : lcbMappings.entrySet()) {
             Set<PIP> currPIPs = new HashSet<>();
+            RouteNode lcb = e.getKey();
+            assert(lcb.getParent() == null);
 
             nextPin: for (SitePinInst sink : e.getValue()) {
                 RouteNode target = sink.getRouteNode();
                 q.clear();
-                q.add(e.getKey());
+                q.add(lcb);
 
                 while (!q.isEmpty()) {
                     RouteNode curr = q.poll();
@@ -579,6 +589,7 @@ public class UltraScaleClockRouting {
                         RouteNode rn = new RouteNode(w.getTile(), w.getWireIndex());
                         ClockRegion cr = w.getTile().getClockRegion();
                         if (cr != null) {
+                            assert(rn.getParent() == null);
                             startingPoints.computeIfAbsent(cr, n -> new HashSet<>())
                                     .add(rn);
                         }
@@ -663,6 +674,7 @@ public class UltraScaleClockRouting {
                     getNodeStatus);
             if (upLines != null) {
                 for (RouteNode rnode : upLines) {
+                    rnode.setParent(null);
                     startingPoints.get(rnode.getTile().getClockRegion()).add(rnode);
                 }
             }
@@ -675,6 +687,7 @@ public class UltraScaleClockRouting {
                     getNodeStatus);
             if (downLines != null) {
                 for (RouteNode rnode : downLines) {
+                    rnode.setParent(null);
                     startingPoints.get(rnode.getTile().getClockRegion()).add(rnode);
                 }
             }
