@@ -284,7 +284,7 @@ public class GlobalSignalRouting {
                         continue;
                     }
 
-                    if (!usedLcbs.add(prevPrev) || prevPrevNodeStatus == NodeStatus.INUSE) {
+                    if (usedLcbs.contains(prevPrev) || prevPrevNodeStatus == NodeStatus.INUSE) {
                         lcbCandidates.clear();
                         lcbCandidates.add(prevPrev);
                         break outer;
