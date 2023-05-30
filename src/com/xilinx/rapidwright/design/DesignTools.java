@@ -1444,6 +1444,7 @@ public class DesignTools {
                     if (pin.isOutPin() && pin.equals(srcPin)) {
                         net.setSource(null);
                     }
+                    assert(pin.getNet() == net);
                     pin.setNet(null);
                     pin.detachSiteInst();
                     continue;
