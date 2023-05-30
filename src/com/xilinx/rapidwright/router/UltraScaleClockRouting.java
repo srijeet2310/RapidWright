@@ -343,7 +343,14 @@ public class UltraScaleClockRouting {
                 IntentCode c = curr.getIntentCode();
                 if (e.getKey().equals(curr.getTile().getClockRegion()) && c == IntentCode.NODE_GLOBAL_HDISTR) {
                     List<PIP> pips = curr.getPIPsBackToSource();
-                    allPIPs.addAll(pips);
+                    for (PIP pip : pips) {
+                        allPIPs.add(pip);
+                        NodeStatus status = getNodeStatus.apply(pip.getStartNode());
+                        if (status == NodeStatus.INUSE) {
+                            break;
+                        }
+                        assert(status == NodeStatus.AVAILABLE);
+                    }
                     distLines.add(curr);
                     continue nextClockRegion;
                 }
@@ -518,8 +525,7 @@ public class UltraScaleClockRouting {
             for (ClockRegion cr : vertDistLines.keySet()) System.out.println(" \t" + cr + " \t " + vertDistLines.get(cr));
         }
 
-        List<RouteNode> distLines = new ArrayList<>();
-        distLines.addAll(routeCentroidToHorizontalDistributionLines(clk, centroidDistNode, vertDistLines, getNodeStatus));
+        List<RouteNode> distLines = routeCentroidToHorizontalDistributionLines(clk, centroidDistNode, vertDistLines, getNodeStatus);
         if (verbose) System.out.println(" dist lines are \n \t" + distLines);
 
         return distLines;
