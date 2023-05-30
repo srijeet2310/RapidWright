@@ -294,7 +294,6 @@ public class UltraScaleClockRouting {
                 ClockRegion currCR = curr.getTile().getClockRegion();
                 if (currCR != null && cr.getRow() == currCR.getRow() && c == IntentCode.NODE_GLOBAL_VDISTR) {
                     if (getNodeStatus.apply(Node.getNode(curr.getTile(), curr.getWire())) == NodeStatus.INUSE) {
-                        curr.setParent(null);
                         startingPoints.add(curr);
                     } else {
                         List<PIP> pips = curr.getPIPsBackToSource();
@@ -304,6 +303,7 @@ public class UltraScaleClockRouting {
                             startingPoints.add(p.getEndRouteNode());
                         }
                     }
+                    curr.setParent(null);
                     crToVdist.put(cr, curr);
                     continue nextClockRegion;
                 }
