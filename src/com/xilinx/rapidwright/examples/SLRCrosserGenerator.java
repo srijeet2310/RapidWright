@@ -380,9 +380,18 @@ public class SLRCrosserGenerator {
                 clockRegions.add(centroid);
                 clockRegions.add(centroid.getNeighborClockRegion(1, 0));
             }
-            Map<ClockRegion, RouteNode> vertDistLines = UltraScaleClockRouting.routeCentroidToVerticalDistributionLines(clk,centroidDistNode, clockRegions);
 
-            distLines.addAll(UltraScaleClockRouting.routeCentroidToHorizontalDistributionLines(clk, centroidDistNode, vertDistLines));
+            Function<Node, NodeStatus> getNodeStatus = (node) -> NodeStatus.AVAILABLE;
+
+            Map<ClockRegion, RouteNode> vertDistLines = UltraScaleClockRouting.routeCentroidToVerticalDistributionLines(clk,
+                    centroidDistNode,
+                    clockRegions,
+                    getNodeStatus);
+
+            distLines.addAll(UltraScaleClockRouting.routeCentroidToHorizontalDistributionLines(clk,
+                    centroidDistNode,
+                    vertDistLines,
+                    getNodeStatus));
         }
 
 

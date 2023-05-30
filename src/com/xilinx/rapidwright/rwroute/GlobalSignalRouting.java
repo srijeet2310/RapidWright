@@ -172,9 +172,10 @@ public class GlobalSignalRouting {
      * Routes a clock net by dividing the target clock regions into two groups and routes to the two groups with different centroid nodes.
      * @param clk The clock to be routed.
      * @param device The design device.
-     * @param isPreservedNode Predicate lambda for indicating whether a Node is preserved and cannot be used.
+     * @param getNodeStatus Lambda for indicating the status of a Node: available, in-use (preserved
+     *                      for same net as we're routing), or unavailable (preserved for other net).
      */
-    public static void symmetricClkRouting(Net clk, Device device, Function<Node,NodeStatus> isPreservedNode) {
+    public static void symmetricClkRouting(Net clk, Device device, Function<Node,NodeStatus> getNodeStatus) {
         List<ClockRegion> clockRegions = getClockRegionsOfNet(clk);
         ClockRegion centroid = findCentroid(clk, device);
 
@@ -197,17 +198,17 @@ public class GlobalSignalRouting {
 
         List<RouteNode> upDownDistLines = new ArrayList<>();
         if (aboveCentroid != null) {
-            List<RouteNode> upLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clk, vrouteUp, upClockRegions, false);
+            List<RouteNode> upLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clk, vrouteUp, upClockRegions, false, getNodeStatus);
             if (upLines != null) upDownDistLines.addAll(upLines);
         }
 
-        List<RouteNode> downLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clk, vrouteDown, downClockRegions, true);//TODO this is where the antenna node shows up
+        List<RouteNode> downLines = UltraScaleClockRouting.routeToHorizontalDistributionLines(clk, vrouteDown, downClockRegions, true, getNodeStatus);//TODO this is where the antenna node shows up
         if (downLines != null) upDownDistLines.addAll(downLines);
 
         Map<RouteNode, ArrayList<SitePinInst>> lcbMappings = getLCBPinMappings(clk);
         UltraScaleClockRouting.routeDistributionToLCBs(clk, upDownDistLines, lcbMappings.keySet());
 
-        UltraScaleClockRouting.routeLCBsToSinks(clk, lcbMappings, isPreservedNode);
+        UltraScaleClockRouting.routeLCBsToSinks(clk, lcbMappings, getNodeStatus);
 
         Set<PIP> clkPIPsWithoutDuplication = new HashSet<>(clk.getPIPs());
         clk.setPIPs(clkPIPsWithoutDuplication);
