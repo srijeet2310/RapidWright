@@ -361,8 +361,20 @@ public class RWRoute{
         }
     }
 
+    // Determines whether a node is not preserved nor reserved and
+    // thus available for use
     protected NodeStatus getNodeStatus(Net net, Node node) {
-        return NodeStatus.AVAILABLE;
+        if (routingGraph.isPreserved(node)) {
+            // Node is preserved by any net -- for base RWRoute, we don't need
+            // to check which net it is because global/static nets are routed
+            // fully in one pass
+            return NodeStatus.UNAVAILABLE;
+        }
+
+        // A RouteNode will only be created if the net is necessary for
+        // a to-be-routed connection
+        return routingGraph.getNode(node) == null ? NodeStatus.AVAILABLE
+                                                  : NodeStatus.UNAVAILABLE;
     }
 
     /**
