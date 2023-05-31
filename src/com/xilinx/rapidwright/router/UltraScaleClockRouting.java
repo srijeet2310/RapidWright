@@ -293,8 +293,11 @@ public class UltraScaleClockRouting {
                 IntentCode c = curr.getIntentCode();
                 ClockRegion currCR = curr.getTile().getClockRegion();
                 if (currCR != null && cr.getRow() == currCR.getRow() && c == IntentCode.NODE_GLOBAL_VDISTR) {
-                    if (getNodeStatus.apply(Node.getNode(curr.getTile(), curr.getWire())) == NodeStatus.INUSE) {
-                        startingPoints.add(curr);
+                    Node currNode = Node.getNode(curr.getTile(), curr.getWire());
+                    // Ensure it's the base wire with valid getWireConnections()
+                    RouteNode vdist = new RouteNode(currNode);
+                    if (getNodeStatus.apply(currNode) == NodeStatus.INUSE) {
+                        startingPoints.add(vdist);
                     } else {
                         List<PIP> pips = curr.getPIPsBackToSource();
                         allPIPs.addAll(pips);
@@ -303,8 +306,8 @@ public class UltraScaleClockRouting {
                             startingPoints.add(p.getEndRouteNode());
                         }
                     }
-                    curr.setParent(null);
-                    crToVdist.put(cr, curr);
+                    vdist.setParent(null);
+                    crToVdist.put(cr, vdist);
                     continue nextClockRegion;
                 }
                 for (Wire w : curr.getWireConnections()) {
@@ -342,10 +345,11 @@ public class UltraScaleClockRouting {
             RouteNode vertDistLine = e.getValue();
             assert(vertDistLine.getParent() == null);
             q.add(vertDistLine);
+            ClockRegion targetCR = e.getKey();
             while (!q.isEmpty()) {
                 RouteNode curr = q.poll();
                 IntentCode c = curr.getIntentCode();
-                if (e.getKey().equals(curr.getTile().getClockRegion()) && c == IntentCode.NODE_GLOBAL_HDISTR) {
+                if (targetCR.equals(curr.getTile().getClockRegion()) && c == IntentCode.NODE_GLOBAL_HDISTR) {
                     List<PIP> pips = curr.getPIPsBackToSource();
                     for (PIP pip : pips) {
                         allPIPs.add(pip);
@@ -363,7 +367,7 @@ public class UltraScaleClockRouting {
                     q.add(new RouteNode(w.getTile(), w.getWireIndex(), curr, curr.getLevel()+1));
                 }
             }
-            throw new RuntimeException("ERROR: Couldn't route to distribution line in clock region " + e.getKey());
+            throw new RuntimeException("ERROR: Couldn't route to distribution line in clock region " + targetCR);
         }
         clk.getPIPs().addAll(allPIPs);
         return distLines;
