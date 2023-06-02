@@ -1270,6 +1270,7 @@ public class DesignTools {
             Queue<String> siteWires = new LinkedList<>();
             Set<String> visited = new HashSet<>();
             siteWires.add(pin.getSiteWireName());
+            List<String> sitePinNames = new ArrayList<>();
             while (!siteWires.isEmpty()) {
                 String siteWire = siteWires.poll();
                 visited.add(siteWire);
@@ -1286,6 +1287,13 @@ public class DesignTools {
                         }
                         continue;
                     }
+
+                    if (otherPin.isSitePort()) {
+                        // An input BELPin is an output SitePin
+                        sitePinNames.add(otherPin.getName());
+                        continue;
+                    }
+
                     Cell otherCell = siteInst.getCell(otherPin.getBEL());
                     if (otherCell == null) continue;
                     if (otherCell.isRoutethru()) {
@@ -1300,8 +1308,9 @@ public class DesignTools {
             }
             if (otherUser == false) {
                 // Unroute site routing back to pin and remove site pin
-                String sitePinName = getRoutedSitePinFromPhysicalPin(cell, net, pin.getName());
-                if (sitePinName != null) {
+                String routedSitePinName = getRoutedSitePinFromPhysicalPin(cell, net, pin.getName());
+                assert(routedSitePinName == null || sitePinNames.contains(routedSitePinName));
+                for (String sitePinName : sitePinNames) {
                     BELPin srcPin = siteInst.getSite().getBELPin(sitePinName);
                     siteInst.unrouteIntraSiteNet(srcPin, pin);
                     SitePinInst spi = siteInst.getSitePinInst(sitePinName);
