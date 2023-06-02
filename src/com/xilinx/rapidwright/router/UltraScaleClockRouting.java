@@ -294,21 +294,23 @@ public class UltraScaleClockRouting {
                 ClockRegion currCR = curr.getTile().getClockRegion();
                 if (currCR != null && cr.getRow() == currCR.getRow() && c == IntentCode.NODE_GLOBAL_VDISTR) {
                     Node currNode = Node.getNode(curr.getTile(), curr.getWire());
-                    // Ensure it's the base wire with valid getWireConnections()
-                    RouteNode vdist = new RouteNode(currNode);
-                    if (getNodeStatus.apply(currNode) == NodeStatus.INUSE) {
-                        startingPoints.add(vdist);
-                    } else {
-                        List<PIP> pips = curr.getPIPsBackToSource();
-                        allPIPs.addAll(pips);
-                        for (PIP p : pips) {
-                            startingPoints.add(p.getStartRouteNode());
-                            startingPoints.add(p.getEndRouteNode());
+                    if (currNode.getWireName().endsWith("_CLK_OUT")) {
+                        // Ensure this is the base wire
+                        assert(curr.getTile() == currNode.getTile() && curr.getWire() == currNode.getWire());
+                        if (getNodeStatus.apply(currNode) == NodeStatus.INUSE) {
+                            startingPoints.add(curr);
+                        } else {
+                            List<PIP> pips = curr.getPIPsBackToSource();
+                            allPIPs.addAll(pips);
+                            for (PIP p : pips) {
+                                startingPoints.add(p.getStartRouteNode());
+                                startingPoints.add(p.getEndRouteNode());
+                            }
                         }
+                        curr.setParent(null);
+                        crToVdist.put(cr, curr);
+                        continue nextClockRegion;
                     }
-                    vdist.setParent(null);
-                    crToVdist.put(cr, vdist);
-                    continue nextClockRegion;
                 }
                 for (Wire w : curr.getWireConnections()) {
                     if (w.getIntentCode() != IntentCode.NODE_GLOBAL_VDISTR) continue;
