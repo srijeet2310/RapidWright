@@ -293,23 +293,22 @@ public class UltraScaleClockRouting {
                 IntentCode c = curr.getIntentCode();
                 ClockRegion currCR = curr.getTile().getClockRegion();
                 if (currCR != null && cr.getRow() == currCR.getRow() && c == IntentCode.NODE_GLOBAL_VDISTR) {
-                    Node currNode = Node.getNode(curr);
                     // Only consider base wires
-                    if (currNode.getTile() == curr.getTile() && currNode.getWire() == curr.getWire()) {
-                        if (getNodeStatus.apply(currNode) == NodeStatus.INUSE) {
-                            startingPoints.add(curr);
-                        } else {
-                            List<PIP> pips = curr.getPIPsBackToSource();
-                            allPIPs.addAll(pips);
-                            for (PIP p : pips) {
-                                startingPoints.add(p.getStartRouteNode());
-                                startingPoints.add(p.getEndRouteNode());
-                            }
+                    Node currNode = Node.getNode(curr);
+                    if (getNodeStatus.apply(currNode) == NodeStatus.INUSE) {
+                        startingPoints.add(curr);
+                    } else {
+                        List<PIP> pips = curr.getPIPsBackToSource();
+                        allPIPs.addAll(pips);
+                        for (PIP p : pips) {
+                            startingPoints.add(p.getStartRouteNode());
+                            startingPoints.add(p.getEndRouteNode());
                         }
-                        curr.setParent(null);
-                        crToVdist.put(cr, curr);
-                        continue nextClockRegion;
                     }
+                    RouteNode currBase = new RouteNode(currNode);
+                    currBase.setParent(null);
+                    crToVdist.put(cr, currBase);
+                    continue nextClockRegion;
                 }
                 for (Wire w : curr.getWireConnections()) {
                     if (w.getIntentCode() != IntentCode.NODE_GLOBAL_VDISTR) continue;
