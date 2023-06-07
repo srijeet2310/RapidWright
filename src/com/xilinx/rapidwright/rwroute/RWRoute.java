@@ -27,6 +27,7 @@ package com.xilinx.rapidwright.rwroute;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -450,16 +451,21 @@ public class RWRoute{
             }
         }
 
-        // Annotate all static pin nodes with the net they're associated with to ensure that one
-        // net cannot unknowingly use a node needed by the other net
-        Map<Node,Net> preservedStaticNodes = new HashMap<>();
-        for (Map.Entry<Net,List<SitePinInst>> e : staticNetAndRoutingTargets.entrySet()) {
-            Net staticNet = e.getKey();
-            for (SitePinInst sink : e.getValue()) {
-                Node node = sink.getConnectedNode();
-                preservedStaticNodes.put(node, staticNet);
-                assert(!routingGraph.isPreserved(node));
+        Map<Node,Net> preservedStaticNodes;
+        if (staticNetAndRoutingTargets.size() > 1) {
+            // Annotate all static pin nodes with the net they're associated with to ensure that one
+            // net cannot unknowingly use a node needed by the other net
+            preservedStaticNodes = new HashMap<>();
+            for (Map.Entry<Net, List<SitePinInst>> e : staticNetAndRoutingTargets.entrySet()) {
+                Net staticNet = e.getKey();
+                for (SitePinInst sink : e.getValue()) {
+                    Node node = sink.getConnectedNode();
+                    preservedStaticNodes.put(node, staticNet);
+                    assert (!routingGraph.isPreserved(node));
+                }
             }
+        } else {
+            preservedStaticNodes = Collections.emptyMap();
         }
 
         // Iterate through both static nets in a stable order (not guaranteed by IdentityHashMap)
