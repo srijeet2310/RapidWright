@@ -21,7 +21,7 @@ REM  limitations under the License.
 REM Check that the main jar has been built
 REM NOTE: Does not check that it is up-to-date
 SET "BAT_SOURCE=%~dp0"
-SET "MAIN_JAR=%BAT_SOURCE:~0,-4%\build\libs\main.jar"
+SET MAIN_JAR="%BAT_SOURCE:~0,-4%build\libs\main.jar"
 IF EXIST %MAIN_JAR% GOTO JAR_EXISTS
 echo "RapidWright not yet compiled. Please run './gradlew compileJava' from '%BAT_SOURCE%'"
 EXIT /B 1
@@ -36,15 +36,15 @@ IF "%PRINT_HELP%"=="FALSE" GOTO RUN_STUFF
 echo.  rapidwright com.xilinx.rapidwright.^<ClassName^> -- to execute main() method of Java class
 echo.  rapidwright ^<application^>                      -- to execute a specific application
 echo.  rapidwright --list-apps                        -- to list all available applications
-echo.  rapidwright Jython                             -- to enter interactive Jython shell
-echo.  rapidwright Jython -c "..."                    -- to execute specific Jython command
+echo.  rapidwright jython                             -- to enter interactive Jython shell
+echo.  rapidwright jython -c "..."                    -- to execute specific Jython command
 EXIT /B 0
 
 :RUN_STUFF
 SET ARG1=%~1
 IF "%ARG1:~0,23%" == "com.xilinx.rapidwright." GOTO RUN_APPS
 
-java -jar %MAIN_JAR%
+java -jar %MAIN_JAR% %*
 EXIT /B 0
 
 :RUN_APPS

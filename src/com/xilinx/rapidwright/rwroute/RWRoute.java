@@ -440,12 +440,6 @@ public class RWRoute{
         if (staticNetAndRoutingTargets.isEmpty())
             return;
 
-        for (List<SitePinInst> netRouteTargetPins : staticNetAndRoutingTargets.values()) {
-            for (SitePinInst sink : netRouteTargetPins) {
-                assert(!routingGraph.isPreserved(sink.getConnectedNode()));
-            }
-        }
-
         List<SitePinInst> gndPins = staticNetAndRoutingTargets.get(design.getGndNet());
         if (gndPins != null) {
             Set<SitePinInst> newVccPins = RouterHelper.invertPossibleGndPinsToVccPins(design, gndPins);
@@ -456,14 +450,37 @@ public class RWRoute{
             }
         }
 
+        // Annotate all static pin nodes with the net they're associated with to ensure that one
+        // net cannot unknowingly use a node needed by the other net
+        Map<Node,Net> preservedStaticNodes = new HashMap<>();
         for (Map.Entry<Net,List<SitePinInst>> e : staticNetAndRoutingTargets.entrySet()) {
-            Net net = e.getKey();
-            List<SitePinInst> pins = e.getValue();
-            System.out.println("INFO: Route " + pins.size() + " pins of " + net);
-            Function<Node, NodeStatus> gns = (node) -> getNodeStatus(net, node);
-            GlobalSignalRouting.routeStaticNet(net, gns, design, routethruHelper);
+            Net staticNet = e.getKey();
+            for (SitePinInst sink : e.getValue()) {
+                Node node = sink.getConnectedNode();
+                preservedStaticNodes.put(node, staticNet);
+                assert(!routingGraph.isPreserved(node));
+            }
+        }
 
-            preserveNet(net, false);
+        // Iterate through both static nets in a stable order (not guaranteed by IdentityHashMap)
+        for (Net staticNet : Arrays.asList(design.getGndNet(), design.getVccNet())) {
+            List<SitePinInst> pins = staticNetAndRoutingTargets.get(staticNet);
+            if (pins == null) {
+                continue;
+            }
+            System.out.println("INFO: Routing " + pins.size() + " pins of " + staticNet);
+
+            Function<Node, NodeStatus> gns = (node) -> {
+                // Check that this node is not needed by the other static net
+                Net preservedNet = preservedStaticNodes.get(node);
+                if (preservedNet != null && preservedNet != staticNet) {
+                    return NodeStatus.UNAVAILABLE;
+                }
+                return getNodeStatus(staticNet, node);
+            };
+            GlobalSignalRouting.routeStaticNet(staticNet, gns, design, routethruHelper);
+
+            preserveNet(staticNet, false);
         }
     }
 
