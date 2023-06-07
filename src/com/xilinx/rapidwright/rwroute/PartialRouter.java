@@ -215,7 +215,7 @@ public class PartialRouter extends RWRoute {
         if (clkNets.isEmpty())
             return;
 
-        routeGlobalClkNets();
+        super.routeGlobalClkNets();
 
         if (softPreserve) {
             // Even though routeGlobalClkNets() has called preserveNet() for all clkNets,
