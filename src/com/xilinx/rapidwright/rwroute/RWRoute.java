@@ -390,16 +390,15 @@ public class RWRoute{
     protected void routeGlobalClkNets() {
         if (clkNets.isEmpty())
             return;
-        System.out.println("INFO: Route clock nets");
         for (Net clk : clkNets) {
             Function<Node, NodeStatus> gns = (node) -> getNodeStatus(clk, node);
             if (routesToSinkINTTiles != null) {
                 // routes clock nets with references of partial routes
-                System.out.println("INFO: Route with clock route and timing data");
+                System.out.println("INFO: Routing " + clk.getPins().size() + " pins of clock " + clk + " (timing-driven)");
                 GlobalSignalRouting.routeClkWithPartialRoutes(clk, routesToSinkINTTiles, design.getDevice(), gns);
             } else {
                 // routes clock nets from scratch
-                System.out.println("INFO: Route with symmetric non-timing-driven clock router");
+                System.out.println("INFO: Routing " + clk.getPins().size() + " pins of clock " + clk + " (non timing-driven)");
                 GlobalSignalRouting.symmetricClkRouting(clk, design.getDevice(), gns);
             }
             preserveNet(clk, false);
