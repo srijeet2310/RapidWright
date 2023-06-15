@@ -2802,7 +2802,7 @@ public class DesignTools {
                 Net parentPhysNet = design.getNet(parentHierNet.getHierarchicalNetName());
                 if (parentPhysNet != null) {
                     // Merge both physical nets together
-                    for (SiteInst si : net.getSiteInsts()) {
+                    for (SiteInst si : new ArrayList<>(net.getSiteInsts())) {
                         List<String> siteWires = new ArrayList<>(si.getSiteWiresFromNet(net));
                         for (String siteWire : siteWires) {
                             BELPin[] pins = si.getSiteWirePins(siteWire);
