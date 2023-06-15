@@ -1470,6 +1470,8 @@ public class DesignTools {
                 }
                 pins.add(pin);
             }
+            net.setAlternateSource(null);
+            net.setSource(null);
             net.setPins(pins);
         }
     }
