@@ -24,18 +24,6 @@
 
 package com.xilinx.rapidwright.rwroute;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Queue;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.function.Predicate;
-
 import com.xilinx.rapidwright.design.Design;
 import com.xilinx.rapidwright.design.Net;
 import com.xilinx.rapidwright.design.NetType;
@@ -54,6 +42,17 @@ import com.xilinx.rapidwright.placer.blockplacer.SmallestEnclosingCircle;
 import com.xilinx.rapidwright.router.RouteNode;
 import com.xilinx.rapidwright.router.RouteThruHelper;
 import com.xilinx.rapidwright.router.UltraScaleClockRouting;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Queue;
+import java.util.Set;
+import java.util.function.Function;
 
 /**
  * A collection of methods for routing global signals, i.e. GLOBAL_CLOCK, VCC and GND.
@@ -337,7 +336,7 @@ public class GlobalSignalRouting {
                                       Function<Node,NodeStatus> getNodeState,
                                       Design design, RouteThruHelper routeThruHelper) {
         NetType netType = currNet.getType();
-        Set<PIP> netPIPs = new HashSet<>();
+        Set<PIP> netPIPs = new HashSet<>(currNet.getPIPs());
         Queue<LightweightRouteNode> q = new LinkedList<>();
         Set<LightweightRouteNode> visitedRoutingNodes = new HashSet<>();
         Set<LightweightRouteNode> usedRoutingNodes = new HashSet<>();
